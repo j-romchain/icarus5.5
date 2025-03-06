@@ -1,3 +1,5 @@
+const { AxiosError } = require("axios");
+
 // @ts-check
 <<<<<<< Updated upstream
 const Augur = require(`augurbot-ts`),
@@ -103,7 +105,7 @@ const Augur = require("augurbot-ts"),
   profanityFilter = require("profanity-matcher"),
   buttermelonFacts = require('../data/buttermelonFacts.json').facts,  
   emojiKitchenSpecialCodes = require("../data/emojiKitchenSpecialCodes.json"),
-  emojilib = require('node-emoji'),
+  emojiSanitizeHelp = require('node-emoji'),
   mineSweeperEmojis = ['0⃣', '1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '💣'];
 /** @param {Discord.ChatInputCommandInteraction} int */
 async function slashFunColor(int) {
@@ -828,6 +830,151 @@ async function slashFunRepost(int) {
 async function slashFunButtermelon(int) {
   return int.editReply(`🍌 ${u.rand(buttermelonFacts)}`);
 }
+<<<<<<< Updated upstream
+=======
+
+/** @param {Discord.ChatInputCommandInteraction} int */
+async function slashFunQuote(int) {
+  const url = "https://api.forismatic.com/api/1.0/?method=getQuote&format=json&lang=en";
+  await int.deferReply();
+  const response = await axios({ url, method: "get" }).catch((/** @type {axios.AxiosError} */ e) => {
+    throw new Error(`axios error: ${e.status}\n${e.message}`);
+  });
+  const data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
+  const embed = u.embed();
+  if (data) {
+    embed.setAuthor({ name: data.quoteAuthor })
+      .setDescription(data.quoteText)
+      .setTimestamp(null);
+  } else {
+    embed.setAuthor({ name: "ChainSword20000" })
+      .setDescription("A developer uses dark mode because bugs are attracted to light, but wouldn't that put the bugs in the code instead of the background?");
+  }
+  return int.editReply({ embeds: [embed] });
+}
+
+/** @param {Discord.ChatInputCommandInteraction} int */
+async function slashFunNamegame(int) {
+  // fun shenanigans (basically check if member is partial (which it probably isnt 99% of the time))
+  const user = int.member && "displayName" in int.member ? int.member.displayName : int.user.displayName;
+  let name = (int.options.getString("name") || user)
+    .replace(/[^a-zA-Z]/g, '_')// just ABCabc etc, numbers were causing problems.
+    .split("_")[0];// and just one segment
+  name = name.charAt(0).toUpperCase() + name.slice(1);
+  try {
+    const url = `https://thenamegame-generator.com/lyrics/${name}.html`;
+    await int.deferReply();
+    // @ts-ignore
+    const response = await axios({ url, method: "get" }).catch(u.noop);
+    if (!response) {
+      return int.editReply(`I couldn't generate lyrics for ${name}.\nPerhaps you can get it yourself from https://thenamegame-generator.com.`).then(u.clean);
+    }
+    // parse the song
+    const song = /<blockquote>\n(.*)<\/blockquote>/g.exec(response?.data)?.[1]?.replace(/<br ?\/>/g, "\n");
+    // make sure its safe
+    const pf = new profanityFilter();
+    const profane = pf.scan(song?.toLowerCase().replace("\n", " ")).length;
+    if (!song) {
+      return int.editReply("I uh... broke my voice box. Try a different name?").then(u.clean);
+    } else if (profane > 0) {
+      return int.editReply("Let's try a different one...").then(u.clean);
+    }
+    const embed = u.embed().setTitle(`🎶 The Name Game! ${name}! 🎵`).setDescription(song);
+    return int.editReply({ embeds: [embed] });
+  } catch (error) { u.errorHandler(error, int); }
+}
+
+/** @param {Discord.ChatInputCommandInteraction} int */
+async function slashFunChoose(int) {
+  const optionsArg = int.options.getString("options", true);
+  if (optionsArg && optionsArg.includes("|")) {
+    const options = optionsArg.split("|");
+    const prefixes = ["I choose", "I pick", "I decided"];
+    return int.reply(`${u.rand(prefixes)} **${u.rand(options).trim()}**`);
+  }
+  return int.reply({ content: 'you need to give me two or more choices! `a | b`', ephemeral: true });
+
+}
+/**
+ * @param {string} emoji unsanitized/irregular emoji input
+ */
+function emojiSanitize(emoji) {
+  let ucode = emojiSanitizeHelp.find(emoji)?.emoji ?? emoji;
+  ucode = emojiKitchenSpecialCodes[ucode] ?? ucode;
+  return ucode;
+}
+function emojiCodePointify(emoji) {
+  return (emojiSanitizeHelp.find(emoji)?.emoji ?? emoji)
+    .split('')
+    .map((char) => char.codePointAt(0).toString(16)).join("-");
+}
+
+/** @param {Discord.ChatInputCommandInteraction} int */
+async function slashFunEmoji(int) {
+  try {
+    await int.deferReply();
+    const emoji1input = int.options.getString("emoji1", true).trim();
+    const emoji2input = (int.options.getString("emoji2") || "").trim();
+    const emoji1 = emojiSanitize(emoji1input);
+    if (emoji2input.length <= 0) {
+      // embiggen
+      console.log(emoji1input);
+      if (emoji1input.includes("<:") || emoji1input.includes("<a:")) {
+        const idExtractRegx = /<(a?):(\w+):(\d+)>/i;
+        // eslint-disable-next-line no-unused-vars
+        const [_, gif, name, id] = idExtractRegx.exec(emoji1input) || [false, "error", 244108501188739072];
+        console.log(gif+":"+name+":"+id);
+        if ((await axios(`https://cdn.discordapp.com/emojis/${id}.${gif.length >= 1 ? 'gif' : 'png'}`)).status !== 200) {
+          return int.editReply(`For some reason I couldn't enlarge ${emoji1input}.`).then(u.clean);
+        }
+        return int.editReply({ files: [{ attachment: `https://cdn.discordapp.com/emojis/${id}.${gif.length >= 1 ? 'gif' : 'png'}`, name: name + "Fullres." + (gif.length >= 1 ? 'gif' : 'png') }] });
+      }
+      const e1CP = emojiCodePointify(emoji1);
+      console.log(e1CP);
+      try {
+        if ((await axios(`https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest/assets/svg/${e1CP}.svg`)).status !== 200) {
+          throw new AxiosError;
+        }
+        return int.editReply({
+          content: `https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest/assets/svg/${e1CP}.svg`,
+          files: [{
+            attachment: `https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest/assets/72x72/${e1CP}.png`,
+            name: emojiSanitizeHelp.find(emoji1)?.key + "Fullres.png"
+          }]
+        });
+      } catch {
+        const e1CPR = e1CP.replace(/-fe0f/g, '');
+        try {
+          if ((await axios(`https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest/assets/svg/${e1CPR}.svg`)).status !== 200) {
+            throw new AxiosError;
+          }
+          return int.editReply({
+            content: `https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest/assets/svg/${e1CPR}.svg`,
+            files: [{
+              attachment: `https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest/assets/72x72/${e1CPR}.png`,
+              name: emojiSanitizeHelp.find(emoji1)?.key + "Fullres.png"
+            }]
+          });
+        } catch {
+          return int.editReply(`For some reason I couldn't enlarge ${emoji1input}.`).then(u.clean);
+        }
+      }
+    }
+    // attempt to merge
+    const emoji2 = emojiSanitize(emoji2input);
+    const results = await axios(`https://tenor.googleapis.com/v2/featured?key=${config.api.tenor}&client_key=emoji_kitchen_funbox&q=${emoji1}_${emoji2}&collection=emoji_kitchen_v6&contentfilter=high`).catch(u.noop);
+    const url = results?.data?.results[0]?.url;
+    if (url) {
+      return int.editReply({ files: [{ attachment: url, name: "combined.png" }] });
+    }
+    if ((emoji1input + emoji2input).includes("<:")) return int.editReply("I can't combine custom emojis! Try again with some default ones.").then(u.clean);
+    return int.editReply(`For some reason I couldn't combine ${emoji1} and ${emoji2}.`).then(u.clean);
+  } catch (error) {
+    u.errorHandler(error);
+  }
+}
+
+>>>>>>> Stashed changes
 /** @param {Discord.Message|Discord.PartialMessage} msg */
 function buttermelonEdit(msg) {
   if ((msg.channel.id == u.sf.channels.botspam || msg.channel.id == u.sf.channels.bottesting) && (msg.cleanContent?.toLowerCase() == "test")) {

@@ -4,7 +4,8 @@
   ],
   "ownerId": "put your id here",
   "api": {
-    "tenor": "You can get your API key for this and more info at https://console.cloud.google.com/apis/library/tenor.googleapis.com",
+    "tenor": "ATokenKeyHere",
+    "tenorNote": "You can get your API key for this and more info at https://console.cloud.google.com/apis/library/tenor.googleapis.com",
     "snipcart": "we don't have a way to test the API right now",
     "challonge": "https://api.challonge.com/v1"
   },
@@ -25,10 +26,16 @@
   "silentMode": false,
   "ownerOverride": true,
   "siteOn": false,
-  "webhooks": {
+  "webhookDocumentation": {
+      "webhookformat":"https://discord.com/api/webhooks/id/token",
     "error": "Webhook url for errors",
     "watchlist": "Webhook url for #watch-list",
     "mcTesting": "Webhook url for testing interactions with Minecraft chat"
+  },
+  "webhooks": {
+    "error": "https://discord.com/api/webhooks/id/token",
+    "watchlist": "https://discord.com/api/webhooks/id/token",
+    "mcTesting": "https://discord.com/api/webhooks/id/token"
   },
   "events": [
     "channelCreate",
@@ -50,7 +57,8 @@
     "voiceStateUpdate"
   ],
   "google": {
-    "api": "You can get your API key for this and more info at https://console.cloud.google.com/apis/library/sheets.googleapis.com",
+    "api": "ATokenKeyHere",
+    "apiNote": "You can get your API key for this and more info at https://console.cloud.google.com/apis/library/sheets.googleapis.com",
     "creds": {
       "type": "Create a project, give it access to google sheets, and create a service account credential. Download the JSON and that should fit in this object",
       "project_id": "",
@@ -64,9 +72,10 @@
       "client_x509_cert_url": ""
     },
     "sheets": {
-      "config": "The testing google sheet ID (https://docs.google.com/spreadsheets/d/THIS_PART_IS_THE_ID_AND_THE_ONLY_THING_THAT_GOES_IN_THIS_PROPERTY)",
-      "games": "",
-      "applications": ""
+      "configNote": "The corresponding google sheet ID (https://docs.google.com/spreadsheets/d/THIS_PART_IS_THE_ID_AND_THE_ONLY_THING_THAT_GOES_IN_THIS_PROPERTY)",
+      "config": "id",
+      "games": "id",
+      "applications": "id"
     }
   },
   "prefix": "! (change this to something unique)",

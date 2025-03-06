@@ -1,529 +1,661 @@
 // @ts-check
-const Augur = require("augurbot-ts"),
-  Discord = require("discord.js"),
-  config = require("../config/config.json"),
-  u = require("../utils/utils"),
+const Augur = require(`augurbot-ts`),
+  Discord = require(`discord.js`),
+  u = require(`../utils/utils`),
   axios = require('axios'),
-  Jimp = require('jimp'),
-
-  profanityFilter = require("profanity-matcher"),
-  buttermelonFacts = require('../data/buttermelonFacts.json'),
-  /** @type {Record<string, string>} */
-  emojiKitchenSpecialCodes = require("../data/emojiKitchenSpecialCodes.json"),
-  emojiSanitizeHelp = require('node-emoji'),
-  mineSweeperEmojis = ['0⃣', '1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '💣'];
-
-/** @param {Discord.ChatInputCommandInteraction} int */
-async function slashFunColor(int) {
-  // get input or random color
-  const colorCode = int.options.getString("color") || "#" + Math.floor(Math.random() * 16777216).toString(16).padStart(6, '0');
-  // In the case that we have a string in 0xABCDEF format
-  /** @type {string | number} */
-  let colorCSS = colorCode.replace('0x', "#");
+  mineSweeperEmojis = { 0:'0⃣', 1:'1⃣', 2:'2⃣', 3:'3⃣', 4:'4⃣', 5:'5⃣', 6:'6⃣', 7:'7⃣', 8:'8⃣', 9:'9⃣', 10:'🔟', 'bomb':'💣' };
+/**
+ * function hug
+ * @param {Discord.ChatInputCommandInteraction} int a /fun hug interaction
+ */
+async function slashFunHug(int) {
+  const hugs = [
+    `http://24.media.tumblr.com/72f1025bdbc219e38ea4a491639a216b/tumblr_mo6jla4wPo1qe89guo1_1280.gif`,
+    `https://media.tenor.com/Uw927NM469EAAAAi/there-cheer.gif`
+  ];
+  const hugee = int.options.getUser(`hugee`) || { displayName:"ERRNOUSR", send: function() {u.errorLog.send({ embeds: [ u.embed().setDescription(`error, user argument on /hug didnt exist. someone messed up slashFun.js`) ] });} };
   try {
-    // make sure it is a valid color, and not just defaulting to black
-    if (!["#000000", "black", "#000000FF"].includes(colorCSS)) colorCSS = Jimp.cssColorToHex(colorCSS);
-    if (colorCSS === 255) {
-      return int.reply({ content: `Sorry, I couldn't understand the color \`${colorCode}\``, flags: ["Ephemeral"] });
+    const hugImg = u.rand(hugs);
+    hugee.send({ content:`Incoming hug from **${int.user.username}**!`, files: [{ attachment:hugImg, name:`hug.gif` }] });
+    // alternatively:
+    // return int.editReply({ content:`**${int.user.username}** hugs **${hugee}**!`, files: [{ attachment:hugImg, name:`hug.gif` }] });
+    // or just remove the .addSubcommand(hug) line from slashFun.js.
+  } catch (e) {
+    return int.editReply(`I couldn't send a hug to ${hugee.displayName}. Maybe they blocked me? :shrug:`);
+  }
+  return int.editReply(`Hug on the way!`);
+}
+/**
+ * function color
+ * @param {Discord.ChatInputCommandInteraction} int a /fun color interaction
+ */
+async function slashFunColor(int) {
+  let colorCode = int.options.getString(`color`);
+  if (!colorCode) {
+    colorCode = `#${Math.floor(Math.random() * 16777216).toString(16).padStart(6, '0')}`;// generate random hex color
+  }
+  try {
+    const Jimp = require(`jimp`);
+
+    let colorCSS;
+    if (colorCode.startsWith('0x')) {
+      // In the case that we have a string in 0xABCDEF format
+      colorCSS = `#${colorCode.substring(2)}`;
+    } else {colorCSS = colorCode;}
+    if (![`#000000`, `black`, `#000000FF`].includes(colorCSS)) {
+      colorCSS = Jimp.cssColorToHex(colorCSS);
     }
-    await int.deferReply();
-    // make and send the image
-    const img = new Jimp(256, 256, colorCSS);
-    return int.editReply({ files: [await img.getBufferAsync(Jimp.MIME_JPEG)] });
+    if (colorCSS != 255) {
+      const img = new Jimp(256, 256, colorCSS);
+      int.editReply({ files: [await img.getBufferAsync(Jimp.MIME_PNG)] });
+    } else {
+      int.editReply(`sorry, I couldn't understand the color ${colorCode}`);
+    }
   } catch (error) {
-    const content = `Sorry, I couldn't understand the color \`${colorCode}\``;
-    if (int.replied || int.deferred) return int.editReply({ content }).then(u.clean);
-    int.reply({ content, flags: ["Ephemeral"] });
+    int.editReply(`sorry, I couldn't understand the color ${colorCode}`);
   }
 }
-
-// global hbs stuff
-/** @type {Record<string, { emoji: string, beats: string, looses: string }>} */
 const hbsValues = {
-  'Buttermelon': { emoji: `<:buttermelon:${u.sf.emoji.buttermelon}>`, beats: "Handicorn", looses: "Sloth" },
-  'Handicorn': { emoji: `<:handicorn:${u.sf.emoji.handicorn}>`, beats: "Sloth", looses: "Buttermelon" },
-  'Sloth': { emoji: `<:slothmare:${u.sf.emoji.slothmare}>`, beats: "Buttermelon", looses: "Handicorn" }
+  'Buttermelon': { emoji: `<:buttermelon:${u.sf.emoji.buttermelon}>`, value: 0 },
+  'Handicorn': { emoji: `<:handicorn:${u.sf.emoji.handicorn}>`, value: 1 },
+  'Sloth': { emoji: `<:sloth:305037088200327168>`, value: 2 } // this is global so it don't need to be in snowflakes
 };
+/**
+ * function hbsChooseRandom
+ * @return {string} a random choice for hbs
+ */
+function hbsChooseRandom() {
+  return u.rand(Object.keys(hbsValues));
+}
 let storedChooser = '';
 let storedChoice = '';
-
-/** @param {Discord.ChatInputCommandInteraction} int */
+/**
+ * function hbsInt
+ * @param {Discord.ChatInputCommandInteraction} int a /fun hbs interaction
+ */
 async function slashFunHBS(int) {
-  const mode = int.options.getString("mode") || "user";
-  const choice = int.options.getString("choice", true);
-  const chooser = int.user.toString();
-  const botLobby = int.client.getTextChannel(u.sf.channels.botSpam);
-  /** @type {{ user: string, choice: string }} */
-  let challenged;
-  if (mode === "user") {
-    if (!storedChoice) {
-      storedChooser = chooser;
-      storedChoice = choice;
-      int.reply({ content: `Your fighter has been picked! ${int.channelId !== u.sf.channels.botSpam ? `Check ${botLobby} to see the results!` : ""}`, flags: ["Ephemeral"] });
-      return botLobby?.send("## Handicorn, Buttermelon, Sloth, Fight!\n" +
-      `${chooser} has chosen their fighter and is awaiting a challenger. Respond using </fun hbs:${u.sf.commands.slashFun}>.`);
-    } else if (storedChooser === chooser) {
-      storedChoice = choice;
-      int.reply({ content: `Your fighter has been updated! ${int.channelId !== u.sf.channels.botSpam ? `Check ${botLobby} to see the results!` : ""}`, flags: ["Ephemeral"] });
-      return botLobby?.send("## Handicorn, Buttermelon, Sloth, Fight!\n" +
-      `${chooser} has changed their fighter and is awaiting a challenger.  Respond using </fun hbs:${u.sf.commands.slashFun}>.`
-      );
+  const tosend = hbs(int.options.getString(`mode`) || `vsicarus`, int.options.getString(`choice`) || `Handicorn`, `<@${int.user}>`);
+  int.deleteReply();
+  int.channel.send(tosend);
+}
+/**
+ * function hbs
+ * @param {string} mode whether vs icarus or another user/stored choice
+ * @param {string} choice a `Handicorn`, `Buttermelon`, or `Sloth` choice
+ * @param {string} chooser string to refer to a user by, whether a ping or not.
+ * @return {string} a response, including a header, what happened, and if applicable who won.
+ */
+function hbs(mode, choice, chooser) {
+  switch (mode) {
+    case (`user`):
+      if (!storedChoice) {
+        storedChooser = chooser;
+        storedChoice = choice;
+        return `**Handicorn, Buttermelon, Sloth, Fight!**\n` +
+        `I have stored a choice by ${chooser}, awaiting a challenge.`;
+      } else {
+        const oldstoredChooser = storedChooser;
+        const olcstoredChoice = storedChoice;
+        storedChooser = '';
+        storedChoice = '';
+        return `**Handicorn, Buttermelon, Sloth, Fight!**\n` +
+        chooser + ` challenged ${oldstoredChooser}!\n` +
+        hbsResult(chooser, choice, oldstoredChooser, olcstoredChoice);
+      }
+    default:
+    case (`icarus`): {
+      const aiChoice = hbsChooseRandom();
+      return `**Handicorn, Buttermelon, Sloth, Fight!**\n` +
+      chooser + ` challenged Icarus!\n` +
+      hbsResult(chooser, choice, `Icarus`, aiChoice);
     }
-
-    challenged = { user: storedChooser, choice: storedChoice };
-    // reset stored values
-    storedChooser = '';
-    storedChoice = '';
-  } else {
-    challenged = { user: int.client.user.toString(), choice: u.rand(Object.keys(hbsValues)) };
   }
-  return int.reply({ content: "## Handicorn, Buttermelon, Sloth, Fight!\n" +
-      `🥊 ${chooser} challenged ${challenged.user}!\n` +
-      hbsResult(chooser, choice, challenged.user, challenged.choice),
-  allowedMentions: { parse: ["users"] } });
+  /**
+ * function hbsResult
+ * @param {string} chooser1 a string to represent who made choice 1
+ * @param {string} choice1 a `Handicorn`, `Buttermelon`, or `Sloth` choice
+ * @param {string} chooser2 a string to represent who made choice 2
+ * @param {string} choice2 a `Handicorn`, `Buttermelon`, or `Sloth` choice
+ * @return {string} a summarry including who picked what and who won.
+ */
+  function hbsResult(chooser1, choice1, chooser2, choice2) {
+    let response = `${chooser1} picked ${hbsValues[choice1].emoji}, ${chooser2} picked ${hbsValues[choice2].emoji}.\n`;
+    const diff = hbsValues[choice2].value - hbsValues[choice1].value;
+    if (diff == 0) {
+      response += `It's a tie!`;// TIE
+    } else if ((diff == -1) || (diff == 2)) {
+      response += `${chooser2} wins!`;
+    } else {
+      response += `${chooser1} wins!`;
+    }
+    return response;
+  }
 }
 
 /**
- * function hbsResult
- * @param {string} chooser1 a string to represent who made choice 1
- * @param {string} choice1 chooser1's "Handicorn", "Buttermelon", or "Sloth" choice
- * @param {string} chooser2 ...
- * @param {string} choice2 ...
- * @return {string} a summary including who picked what and who won.
+ * function allthe
+ * @param {Discord.ChatInputCommandInteraction} int a /fun allthe interaction
  */
-function hbsResult(chooser1, choice1, chooser2, choice2) {
-  let response = `🤼 ${chooser1} picked ${hbsValues[choice1].emoji}, ${chooser2} picked ${hbsValues[choice2].emoji}.\n### `;
-  if (choice1 === choice2) {
-    response += "🤝 It's a tie!";
-  } else if (hbsValues[choice1].beats === choice2) {
-    response += `🏆 ${chooser1} wins!`;
-  } else {
-    response += `😵‍💫 ${chooser1} looses!`;
-  }
-  return response;
+async function slashFunAllThe(int) {
+  const thing = int.options.getString('thing');
+  int.editReply({ content:`${int.user.username}:\nALL THE ${thing.toUpperCase()}!`, files: [{ attachment:`https://cdn.discordapp.com/emojis/250348426817044482.png`, name:`allthe.png` }] });
 }
-
-/** @param {Discord.ChatInputCommandInteraction} int */
+/**
+ * function acronymInt
+ * @param {Discord.ChatInputCommandInteraction} int a /fun acronym interaction
+ */
 async function slashFunAcronym(int) {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-  // input or number between 3 and 5
-  const len = int.options.getInteger("length") || Math.floor(Math.random() * 3) + 3;
+  return int.editReply(`I've always wondered what __**${acronym(int.options.getInteger(`length`))}**__ stood for...`);
+}
+/**
+ * function acronym
+ * @param {number|null} len length of acronym
+ * @returns {string} a randomly generated, clean, acronym
+ */
+function acronym(len) {
+  const alphabet = [`A`, `B`, `C`, `D`, `E`, `F`, `G`, `H`, `I`, `J`, `K`, `L`, `M`, `N`, `O`, `P`, `Q`, `R`, `S`, `T`, `U`, `V`, `W`, `Y`, `Z`];
+  if (!len) {len = Math.floor(Math.random() * 3) + 3;}
+  const profanityFilter = require(`profanity-matcher`);
   const pf = new profanityFilter();
-
-  /** @type {string[]} */
   let wordgen = [];
 
-  // try a bunch of times
-  for (let ignored = 0; ignored < len * len; ignored++) {
-    // make an acronym
+  for (let ignored = 0; ignored < len * len; ignored++) {// try a bunch of times
     for (let i = 0; i < len; i++) {
       wordgen.push(alphabet[Math.floor(Math.random() * alphabet.length)]);
     }
-    const word = wordgen.join("");
-    // see if it has any bad words
-    if (pf.scan(word.toLowerCase()).length === 0) {
-      return int.reply(`I've always wondered what __**${word}**__ stood for...`);
-    }
-    wordgen = [];
+    const word = wordgen.join(``);
 
+    if (pf.scan(word.toLowerCase()).length == 0) {
+      return word;
+    } else {
+      wordgen = [];
+    }
   }
-  return int.reply("I've always wondered what __**IDUTR**__ stood for...");// cannonically it hearby stands for "IDiUT eRror"
+  return `err`;
 }
 
-/** @param {Discord.ChatInputCommandInteraction} int */
+/**
+ * function minesweeperInt
+ * @param {Discord.ChatInputCommandInteraction} int a /fun minesweeper interaction
+ */
 async function slashFunMinesweeper(int) {
-  let edgesize, mineCount, preclickCount;
-  switch (int.options.getString("difficulty", true)) {
-    case "Hard":
-      edgesize = [10, 18];
+  let size, mineCount;
+  switch (int.options.getString(`difficulty`)) {
+    case `Hard`:
+      size = 14;
       mineCount = 60;
-      preclickCount = 6;
       break;
-    case "Medium":
-      edgesize = [10, 10];
+    case `Medium`:
+      size = 10;
       mineCount = 30;
-      preclickCount = 4;
       break;
     default:
-      edgesize = [5, 5];
+    case `Easy`:
+      size = 5;
       mineCount = 5;
-      preclickCount = 4;
       break;
   }
-  // override with manual numbers if given
-  edgesize[0] = int.options.getInteger("width") || edgesize[0];
-  edgesize[1] = int.options.getInteger("height") || edgesize[1];
-  mineCount = int.options.getInteger("minecount") || mineCount;
-  preclickCount = int.options.getInteger("preclickcount") || preclickCount;
-  // x and y lengths (for custom dimensions)
-  const [width, height] = edgesize;
-  preclickCount = Math.min(width * height, preclickCount);
-  mineCount = Math.min(width * height - preclickCount, mineCount);
-  // Create a 2d array for the board
-  const board = new Array(height).fill([]).map(() => {return new Array(width).fill(0);});
-  // Convert the 2d array to a 2d index array
-  const spaces = board.map((r, y) => {
-    const row = new Array(width + 1);
-    row[0] = y;
-    r.forEach((_, x) => {row[x + 1] = x;});
-    return row;
-  });
-  // place mines
-  for (let i = 0; i < mineCount; i++) {
-    // Get a random position
-    const rownum = Math.floor(Math.random() * spaces.length);
-    const row = spaces[rownum];
-    const y = row[0];
-    const slotnum = Math.floor(Math.random() * (row.length - 1)) + 1;
-    const x = row[slotnum];
-    // Set the value to a mine
-    board[y][x] = 9;
-    // Remove from possible mine spaces
-    row.splice(slotnum, 1);
-    if (row.length === 1) {
-      spaces.splice(rownum, 1);
+  const field = minesweeper(size, mineCount);
+  let degradingField = field;
+  function countEmoji(text) {
+    const emojiRegex = new RegExp(`(${Object.values(mineSweeperEmojis).map(emoji => emoji.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join(`|`)})`, 'g');
+    const emoji = text.match(emojiRegex);
+    return emoji?.length || 0;
+  }
+  if (countEmoji(field) <= 99) {
+    return int.editReply(field); // No splitting needed
+  }
+  while (countEmoji(degradingField) > 99) {
+    let segment = ``;
+    while (countEmoji(segment + degradingField.substring(0, degradingField.indexOf(`\n`) >= 0 ? degradingField.indexOf(`\n`) : degradingField.length)) <= 99) {
+      segment += degradingField.substring(0, (degradingField.indexOf(`\n`) >= 0 ? degradingField.indexOf(`\n`) : degradingField.length) + 1);
+      degradingField = degradingField.substring((degradingField.indexOf(`\n`) >= 0 ? degradingField.indexOf(`\n`) : degradingField.length) + 1);
     }
-    // Increment all spots around it
-    for (let incrementx = Math.max(0, x - 1); incrementx < Math.min(width, x + 2); incrementx++) {
-      for (let incrementy = Math.max(0, y - 1); incrementy < Math.min(height, y + 2); incrementy++) {
-        board[incrementy][incrementx]++;
+    if (segment + degradingField == field) {
+      await int.editReply(segment);
+    } else {
+      await int.channel.send(segment);
+    }
+  }
+  return int.channel.send(degradingField);
+}
+
+/**
+ * function minesweeper
+ * @param {number} size edge length of the minesweeper game to generate
+ * @param {number} mineCount the number of mines to put in the game
+ * @return {string} a textual minesweeper game with a header and using || spoilers.
+ */
+function minesweeper(size, mineCount) {
+  // Getting all possible board spaces
+  const possibleSpaces = Array.from({ length: size * size }, (v, k) => k);
+  // Remove 4 corners, corners can't be mines
+  possibleSpaces.splice((size * size) - 1, 1);
+  possibleSpaces.splice((size - 1) * size, 1);
+  possibleSpaces.splice(size - 1, 1);
+  possibleSpaces.splice(0, 1);
+  // Finding out where the mines will be
+  const mineSpaces = [];
+  for (let i = 0; i < mineCount; i++) {
+    const random = Math.floor(Math.random() * possibleSpaces.length);
+    mineSpaces.push(possibleSpaces[random]);
+    possibleSpaces.splice(random, 1);
+  }
+
+  function getMineCount(x, y) {
+    let count = 0;
+    for (let i = -1; i <= 1; i++) {
+      if ((x + i) < 0 || (x + i) >= size) continue;
+      for (let j = -1; j <= 1; j++) {
+        if ((y + j) < 0 || (y + j) >= size) continue;
+        if (mineSpaces.includes((y + j) * size + x + i)) count++;
+      }
+    }
+
+    return count;
+  }
+
+  // Creating the final board
+  /** @type {number[][]} */
+  const board = [];
+  for (let x = 0; x < size; x++) {
+    board.push([]);
+    for (let y = 0; y < size; y++) {
+      if (mineSpaces.includes(x + (y * size))) {
+        board[x].push(9);
+        continue;
+      }
+      board[x].push(getMineCount(x, y));
+    }
+  }
+  const output = board.map(row => row.map(num => `||${num == 9 ? mineSweeperEmojis[`bomb`] : mineSweeperEmojis[num]}||`).join(``)).join(`\n`);
+  return (`**Mines: ${mineCount}** (Tip: Corners are never mines)\n${output}`);
+}
+
+
+/**
+ * function rollOldInt
+ * @param {Discord.ChatInputCommandInteraction} int a /fun rollOld interaction
+ */
+async function slashFunRollOld(int) {
+  const rollsolts = rollOld(int.options.getString('rollformula'));
+  return int.editReply(rollsolts.useroutput);
+}
+/**
+ * function rollOld
+ * @param string rolls roll formula in old !roll format
+ * @returns {{ total:number, rolls:string[], useroutput:string }} Object with 3 key/value pairs. total, an int with the total of all of the rolls; rolls, an int[] with the result of each roll; and useroutput, output or error in human readable format
+ */
+function rollOld(rollFormula) {
+  if (!rollFormula) rollFormula = `1d6`;
+  rollFormula = rollFormula.toLowerCase().replace(/-/g, `+-`).replace(/ /g, ``);
+  const diceExp = /(\d+)?d\d+(\+-?(\d+)?d?\d+)*/;
+  const roughDice = diceExp.exec(rollFormula);
+  const fateExp = /(\d+)?df(\+-?\d+)?/i;
+  const fate = fateExp.exec(rollFormula);
+  if (roughDice) {
+    const exp = roughDice[0].replace(/\+-/g, `-`);
+    const dice = roughDice[0].split(`+`);
+
+    const doneRolls = [];
+    let total = 0;
+
+    dice.forEach((formula, rollCount) => {
+      doneRolls[rollCount] = [];
+      if (formula.includes(`d`)) {
+        const add = (formula.startsWith(`-`) ? -1 : 1);
+        if (add == -1) formula = formula.substr(1);
+        if (formula.startsWith(`d`)) formula = `1${formula}`;
+        const formulaParts = formula.split(`d`);
+        const num = parseInt(formulaParts[0], 10);
+        if (num && num <= 10000) {
+          for (let i = 0; i < num; i++) {
+            const val = Math.ceil(Math.random() * parseInt(formulaParts[1], 10)) * add;
+            doneRolls[rollCount].push((i == 0 ? `**${formula}:** ` : ``) + val);
+            total += val;
+          }
+        } else {
+          return { total:0, rolls:0, useroutput:`I'm not going to roll *that* many dice... 🙄` };
+        }
+      } else {
+        total += parseInt(formula, 10);
+        rollCount[rollCount].push(`**${formula}**`);
+      }
+    });
+    if (doneRolls.length > 0) {
+      const response = `You rolled ${exp} and got:${total}\n` +
+          ((doneRolls.reduce((a, c) => a + c.length, 0) > 20) ? `` : ` ( ${doneRolls.reduce((a, c) => a + c.join(`, `) + `; `, ``)})`);
+      return { total:total, rolls:doneRolls, useroutput:response };
+    } else {
+      return { total:0, rolls:[], useroutput:`you didn't give me anything to roll.` };
+    }
+  } else if (fate) {
+    const exp = fate[0].replace(/\+-/g, `-`);
+    const dice = fate[0].split(`+`);
+
+    const rolls = [];
+    dice.forEach(d => {
+      if (d.includes(`df`)) {
+        const add = (d.startsWith(`-`) ? -1 : 1);
+        if (add == -1) d = d.substr(1);
+        if (d.startsWith(`df`)) d = `1${d}`;
+        const num = parseInt(d, 10);
+        if (num && num <= 10000) {
+          for (let i = 0; i < num; i++) {
+            rolls.push((Math.floor(Math.random() * 3) - 1) * add);
+          }
+        } else {
+          return { total:0, rolls:[], useroutput:`I'm not going to roll *that* many dice... 🙄` };
+        }
+      } else {
+        rolls.push(parseInt(d, 10));
+      }
+    });
+    if (rolls.length > 0) {
+      const response = `You rolled ${exp} and got:${rolls.reduce((c, d) => c + d, 0)}\n` +
+          ((rolls.length > 20) ? `` : ` (${rolls.join(`, `)})`);
+      return { total:rolls.reduce((c, d) => c + d, 0), rolls:rolls, useroutput:response };
+    } else {
+      return { total:0, rolls:[], useroutput:`you didn't give me anything to roll.` };
+    }
+  } else {
+    return { total:0, rolls:[], useroutput:`that wasn't a valid dice expression.` };
+  }
+}
+/**
+ * function rollFInt
+ * @param {Discord.ChatInputCommandInteraction} int a /fun rollF interaction
+ */
+async function slashFunRollF(int) {
+  const rollsolts = rollf(int.options.getInteger('dice'), int.options.getInteger('modifier'));
+  return int.editReply(rollsolts.useroutput);
+}
+/**
+ * function rollf
+ * @param int dice number of dice to roll (defaults to 1)
+ * @param int modifier modifier to add to roll result (defaults to 0)
+ * @returns {{ total:number, rolls:number[], useroutput:string }} Object with 3 key/value pairs. total, an int with the total of all of the rolls; rolls, an int[] with the result of each roll; and useroutput, output or error in human readable format
+ */
+function rollf(dice, modifier) {
+  if (!dice) dice = 1;
+  if (!modifier) modifier = 0;
+  const rolls = [];
+  const num = dice;
+  if (num && num <= 10000) {
+    for (let i = 0; i < num; i++) {
+      rolls.push((Math.floor(Math.random() * 3) - 1));
+    }
+  } else {
+    return { total:0, rolls:[], useroutput:`I'm not going to roll *that* many dice... 🙄` };
+  }
+  if (rolls.length > 0) {
+    const response = `You rolled ${dice}df and got:${rolls.reduce((c, d) => c + d, 0)}\n` +
+    ((rolls.length > 20) ? `` : ` (${rolls.join(`, `)})`);
+    return { total:rolls.reduce((c, d) => c + d, 0), rolls:rolls, useroutput:response };
+  } else {
+    return { total:0, rolls:[], useroutput:`you didn't give me anything to roll.` };
+  }
+}
+/**
+ * function rollInt
+ * @param {Discord.ChatInputCommandInteraction} int a /fun roll interaction
+ */
+async function slashFunRoll(int) {
+  const rollsolts = rollDice(int.options.getInteger('dice'), int.options.getInteger('sides'), int.options.getInteger('modifier'));
+  return int.editReply(rollsolts.useroutput);
+}
+/**
+ * function rollDice
+ * @param int dice number of dice to roll (defaults to 1)
+ * @param int sides side count of dice (defaults to 6)
+ * @param int modifier modifier to add to roll result (defaults to 0)
+ * @returns {{ total:number, rolls:string[][], useroutput:string }} Object with 3 key/value pairs. total, an int with the total of all of the rolls; rolls, an int[] with the result of each roll; and useroutput, output or error in human readable format
+ */
+function rollDice(dice, sides, modifier) {
+  if (!dice) dice = 1;
+  if (!sides) sides = 6;
+  if (!modifier) modifier = 0;
+  /** @type {string[][]} */
+  const rolls = [];
+  let total = 0;
+  rolls[sides] = [];
+  const num = dice;
+  if (num && num <= 10000) {
+    for (let i = 0; i < num; i++) {
+      const val = Math.ceil(Math.random() * parseInt(sides, 10));
+      rolls[sides].push((i == 0 ? `**d${sides}:** ` : ``) + val);
+      total += val;
+    }
+  } else {
+    return { total:0, rolls:[], useroutput:`I'm not going to roll *that* many dice... 🙄` };
+  }
+  if (modifier) {
+    total += parseInt(dice, 10);
+    rolls[sides].push(`**${dice}**`);
+  }
+  if (rolls.length > 0) {
+    const response = `You rolled ${dice}d${sides} and got:${total}\n` +
+        ((rolls.reduce((a, c) => a + c.length, 0) > 20) ? `` : ` ( ${rolls.reduce((a, c) => a + c.join(`, `) + `; `, ``)})`);
+    return { total:total, rolls:rolls, useroutput:response };
+  } else {
+    return { total:0, rolls:[], useroutput:`you didn't give me anything to roll.` };
+  }
+}
+/**
+ * function ball8
+ * @param {Discord.ChatInputCommandInteraction} int a /fun 8ball interaction
+ */
+async function slashFun8ball(int) {
+  const question = int.options.getString(`question`);
+  if (!question || !question.endsWith(`?`)) {
+    return int.editReply(`you need to ask me a question, silly.`);
+  } else {
+    const outcomes = [
+      `It is certain.`,
+      `It is decidedly so.`,
+      `Without a doubt.`,
+      `Yes - definitely.`,
+      `You may rely on it.`,
+      `As I see it, yes.`,
+      `Most likely.`,
+      `Outlook good.`,
+      `Yes.`,
+      `Signs point to yes.`,
+      `Reply hazy, try again.`,
+      `Ask again later.`,
+      `Better not tell you now.`,
+      `Cannot predict now.`,
+      `Concentrate and ask again.`,
+      `Don't count on it.`,
+      `My reply is no.`,
+      `My sources say no.`,
+      `Outlook not so good.`,
+      `Very doubtful.`
+    ];
+    return int.editReply(`You asked :"${question}"\n` +
+      `The 8ball replies:\n` +
+      u.rand(outcomes));
+  }
+}
+/**
+ * function repost
+ * @param {Discord.ChatInputCommandInteraction} int a /fun repost interaction
+ */
+async function slashFunRepost(int) {
+  if (!int.channel) {
+    return int.editReply(`I don't know where here is, so I can't find anything to repost... try in a more normal channel.`);
+  }
+  const messages = (await int.channel.messages.fetch({ limit: 100 }));
+  const filtered = messages.filter(m => m.attachments.size > 0);
+  const latest = filtered.last();
+  if (!latest) {
+    return int.editReply(`I couldn't find anything in the last 100 messages to repost.`);
+  }
+  const latestsAttatchments = latest.attachments;
+  if (!latestsAttatchments) {
+    u.errorLog.send({ embeds: [ u.embed().setDescription(`impossible /repost error #1`)] });
+    return int.editReply(`I'm going crazy, this error should be impossible.`);
+  }
+  const latestsFirstAttatchment = latestsAttatchments.first();
+  if (!latestsFirstAttatchment) {
+    u.errorLog.send({ embeds: [ u.embed().setDescription(`impossible /repost error #2`)] });
+    return int.editReply(`I'm going crazy, this error should be impossible.`);
+  }
+  const imgToRepost = latestsFirstAttatchment.url;
+  return int.editReply(imgToRepost);
+}
+/**
+ * function buttermelon
+ * @param {Discord.ChatInputCommandInteraction} int a /fun buttermelon interaction
+ */
+async function slashFunButtermelon(int) {
+  const buttermelonFacts = require('../data/buttermelonFacts.json');
+  return int.editReply(`🍌 ${u.rand(buttermelonFacts.facts)}`);
+}
+/**
+ * function buttermelonEdit
+ * @param {Discord.Message} msg a message potentially containing bannana(s)
+ */
+function buttermelonEdit(msg) {
+  if ((msg.channel.id == u.sf.channels.botspam || msg.channel.id == u.sf.channels.bottesting) && (msg.cleanContent.toLowerCase() == `test`)) {
+    msg.channel.send((Math.random() < 0.8 ? `pass` : `fail`));
+  }
+  const exclude = ['121033996439257092', '164784857296273408'];// IDK where these are so hardcoded they shall currently remain.
+  const roll = Math.random();
+  if (roll < 0.3 && !msg.author.bot && !exclude.includes(msg.channel.id)) {
+    // let banana = /[bß8ƥɓϐβбБВЬЪвᴮᴯḃḅḇÞ][a@∆æàáâãäåāăȁȃȧɑαдӑӓᴀᴬᵃᵅᶏᶐḁạảấầẩẫậắằẳẵặ4Λ]+([nⁿńňŋƞǹñϰпНhийӣӥѝνṅṇṉṋ]+[a@∆æàáâãäåāăȁȃȧɑαдӑӓᴀᴬᵃᵅᶏᶐḁạảấầẩẫậắằẳẵặ4Λ]+){2}/ig;
+    if (msg.content.toLowerCase().includes(`bananas`)) {
+      if (roll < 0.1) {
+        msg.channel.send({ files: [new Discord.AttachmentBuilder('media/buttermelonsMan.jpeg')] }).catch(u.errorHandler);
+      } else {
+        msg.channel.send(`*buttermelons`).catch(u.errorHandler);
+      }
+    } else if (msg.content.toLowerCase().includes(`banana`)) {
+      if (roll < 0.06) {
+        msg.channel.send({ files: [new Discord.AttachmentBuilder('media/buttermelonPile.png')] }).catch(u.errorHandler);
+      } else if (roll < 0.1) {
+        msg.channel.send({ files: [new Discord.AttachmentBuilder('media/buttermelonMan.jpeg')] }).catch(u.errorHandler);
+      } else {
+        msg.channel.send(`*buttermelon`).catch(u.errorHandler);
       }
     }
   }
-
-  for (let i = 0; i < preclickCount; i++) {
-    // Get a random position
-    const rownum = Math.floor(Math.random() * spaces.length);
-    const row = spaces[rownum];
-    const y = row[0];
-    const slotnum = Math.floor(Math.random() * (row.length - 1)) + 1;
-    const x = row[slotnum];
-    // expose it
-    board[y][x] = -1 - board[y][x];
-    // Remove from non-special-spaces
-    row.splice(slotnum, 1);
-    if (row.length === 1) {
-      spaces.splice(rownum, 1);
-    }
-  }
-  // seperate into rows and emojify and hide if not exposed
-  const rowStrings = board.map(row => row.map(num => num < 0 ? mineSweeperEmojis[-num - 1] : `||${mineSweeperEmojis[Math.min(num, 9)]}||`).join(""));
-
-  if (!int.channel?.isSendable()) {
-    return int.reply({ content: `I can't figure out where to put the board in here, try again in another channel like <#${u.sf.channels.botSpam}>`, flags: ["Ephemeral"] });
-  }
-  await int.reply(`**Mines: ${mineCount}**`);
-  const messages = [""];
-  let messageCount = 0;
-  let tagpairs = 0;
-  // max of 200 spoiler tags per message, split into as many as needed
-  rowStrings.forEach((row) => {
-    if (tagpairs + (width * 2) > 199) {
-      tagpairs = 0;
-      messageCount++;
-      messages[messageCount] = "";
-    }
-    tagpairs += width * 2;
-    messages[messageCount] += row + "\n";
-  });
-  // send the messages in order
-  let i = 0;
-  while (i < messages.length) {
-    const msg = messages[i];
-    await int.channel.send(msg);
-    i++;
-  }
 }
-
-/** @param {Discord.ChatInputCommandInteraction} int */
-async function slashFunRoll(int) {
-  // get inputs
-  const dice = int.options.getInteger('dice') || 1;
-  const sides = int.options.getInteger('sides') || 6;
-  const modifier = int.options.getInteger('modifier') || 0;
-  if (dice > 10000) {
-    return int.reply({ content: "I'm not going to roll *that* many dice... 🙄", flags: ["Ephemeral"] });
-  }
-  // calculate rolls
-  /** @type {number[]} */
-  const rolls = [];
-  for (let i = 0; i < dice; i++) {
-    rolls.push(Math.ceil(Math.random() * sides));
-  }
-  // make it visually pleasing
-  const total = rolls.reduce((p, c) => p + c, 0) + modifier;
-  let rollStr = "";
-  const maxShown = 20;
-  if (rolls.length > maxShown + 3) {
-    const extra = rolls.length - maxShown;
-    const reduced = rolls.filter((r, i) => i < maxShown);
-    rollStr = `${reduced.join(" + ")}, + ${extra} more`;
-  } else {
-    rollStr = rolls.join(" + ");
-  }
-  const modStr = modifier > 0 ? ` + ${modifier}` : modifier ? ` - ${Math.abs(modifier)}` : "";
-  const summary = `${rollStr ? ` (**1d${sides}**: ${rollStr})` : ""}${modStr ? `**${modStr}**` : ""}`;
-  // send visually pleasing result
-  return int.reply(`You rolled ${dice}d${sides}${modStr} and got \`${total}\`!\n ${summary}`);
-}
-
-/** @param {Discord.ChatInputCommandInteraction} int */
-async function slashFun8ball(int) {
-  const question = int.options.getString("question", true);
-  if (!question.endsWith("?")) {
-    return int.reply({ content: "You need to ask me a question, silly.", flags: ["Ephemeral"] });
-  }
-  const outcomes = [
-    "It is certain.",
-    "It is decidedly so.",
-    "Without a doubt.",
-    "Yes - definitely.",
-    "You may rely on it.",
-    "As I see it, yes.",
-    "Most likely.",
-    "Outlook good.",
-    "Yes.",
-    "Signs point to yes.",
-    // the following were removed due to complaints
-    // "Reply hazy, try again.",
-    // "Ask again later.",
-    // "Better not tell you now.",
-    // "Cannot predict now.",
-    // "Concentrate and ask again.",
-    "Don't count on it.",
-    "My reply is no.",
-    "My sources say no.",
-    "Outlook not so good.",
-    "Very doubtful."
-  ];
-  return int.reply(`❓: \`${question}\`\n` +
-    `🎱: \`${u.rand(outcomes)}\``
-  );
-}
-
-/** @param {Discord.ChatInputCommandInteraction} int */
-async function slashFunRepost(int) {
-  if (!int.channel) {
-    return int.reply({ content: "I don't know where here is, so I can't find anything to repost... try in a more normal channel.", flags: ["Ephemeral"] });
-  }
-  await int.deferReply();
-  const latest = (await int.channel.messages.fetch({ limit: 100 })).filter(m => m.attachments.size > 0 || m.embeds.some(embed => embed.image || embed.video)).first();
-  if (!latest) {
-    return int.editReply("I couldn't find anything in the last 100 messages to repost.").then(u.clean);
-  }
-  return int.editReply({
-    content: 'repost that? ok!',
-    files: latest.attachments.map(a => a.url),
-    embeds: latest.embeds.filter(embed => embed.image || embed.video)
-  });
-}
-
-/** @param {Discord.ChatInputCommandInteraction} int */
-async function slashFunButtermelon(int) {
-  return int.reply(`🍌 ${u.rand(buttermelonFacts)}`);
-}
-
-/** @param {Discord.ChatInputCommandInteraction} int */
+/**
+ * function quoteInt
+ * @param {Discord.ChatInputCommandInteraction} int a /fun quote interaction
+ */
 async function slashFunQuote(int) {
-  const url = "https://zenquotes.io/api/random";
-  await int.deferReply();
-  // @ts-ignore
-  const response = await axios({ url, method: "get" }).catch((/** @type {axios.AxiosError} */ e) => {
-    throw new Error(`axios error: ${e.status}\n${e.message}`);
-  });
-  const data = (typeof response.data === "string" ? JSON.parse(response.data) : response.data)[0] || false;
-  const embed = u.embed();
-  if (data) {
-    embed.setAuthor({ name: data.a })
-      .setDescription(data.q)
-      .setTimestamp(null);
-  } else {
-    embed.setAuthor({ name: "ChainSword20000" })
-      .setDescription("A developer uses dark mode because bugs are attracted to light, but wouldn't that put the bugs in the code instead of the background?");
-  }
-  return int.editReply({ embeds: [embed] });
+  return int.editReply(await quote());
 }
-
-/** @param {Discord.ChatInputCommandInteraction} int */
+/**
+ * function quote
+ * @returns {Promise<string>} a random quote with a bit of reformatting.
+ */
+async function quote() {
+  const url = `https://api.forismatic.com/api/1.0/?method=getQuote&format=json&lang=en`;
+  const response = await axios({ url, method: `get` }).catch((/** @type {axios.AxiosError} */ e) => {
+    throw new Error(`quote command error:${e.status}`);
+  });
+  console.log(response);
+  const data = response.data;
+  console.log(data);
+  if (data) {
+    const randomQuote = data;
+    console.log(`> ${randomQuote.quoteText}\n> - ${randomQuote.quoteAuthor}`);
+    return `> ${randomQuote.quoteText}\n> - ${randomQuote.quoteAuthor}`;
+  } else {
+    return `> A developer uses dark mode because bugs are attracted to light, \n` +
+    `> but wouldn't that put the bugs in the code instead of the background?\n` +
+    `> - ChainSword20000`;
+  }
+}
+/**
+ * function namegame
+ * @param {Discord.ChatInputCommandInteraction} int a /fun namegame interaction
+ */
 async function slashFunNamegame(int) {
-  // fun shenanigans (basically check if member is partial (which it probably isnt 99% of the time))
-  const user = int.member && "displayName" in int.member ? int.member.displayName : int.user.displayName;
-  let name = (int.options.getString("name") || user)
-    .replace(/[^a-zA-Z]/g, '_')// just ABCabc etc, numbers were causing problems.
-    .split("_")[0];// and just one segment
-  name = name.charAt(0).toUpperCase() + name.slice(1);
+  let nameArg = int.options.getString(`name`);
   try {
+    if (!nameArg) nameArg = int.user.displayName;
+    nameArg = nameArg.replace(/[^a-zA-Z]/g, '_');// just ABCabc etc, numbers were causing problems.
+    nameArg = nameArg.split(`_`)[0];// and just one segment
+    const name = nameArg;
     const url = `https://thenamegame-generator.com/lyrics/${name}.html`;
-    await int.deferReply();
-    // @ts-ignore
-    const response = await axios({ url, method: "get" }).catch(u.noop);
-    if (!response) {
-      return int.editReply(`I couldn't generate lyrics for ${name}.\nPerhaps you can get it yourself from https://thenamegame-generator.com.`).then(u.clean);
+    const response = await axios({ url, method: `get` }).catch((/** @type {axios.AxiosError} */ e) => {
+      int.editReply(`Could not generate lyrics for ${name}.\nPerhaps you can get it yourself from https://thenamegame-generator.com.`);
+      throw new Error(`namegame command error:${e.status}`);
+    });
+    const data = response.data;
+    if (data) {
+      const profanityFilter = require(`profanity-matcher`);
+      const pf = new profanityFilter();
+      const lyricsUntrimmedEnd = data.substring(data.indexOf(`<blockquote>`) + 12);
+      const lyricsTrimmedWithHtml = lyricsUntrimmedEnd.substring(0, lyricsUntrimmedEnd.indexOf(`</blockquote>`));
+      const results = lyricsTrimmedWithHtml.replace(/<br>/g, `\n`).replace(/<br \/>/g, `\n`);
+      const pfresults = pf.scan(results.toLowerCase().replace(/[-\n]/g, ` `).replace(/\s\s+/g, ` `));
+      const ispf = (pfresults.length > 0 && pfresults[0]) || (pfresults.length > 1);
+      if (!ispf && (name.length <= 230) && (results.length + name.length <= 5750)) {
+        const embed = u.embed().setTitle(`🎶 **The Name Game! ${name}! 🎵`).setDescription(results);
+        int.editReply({ embeds:[embed] });
+      } else {
+        int.editReply(`😬`);
+      }
+    } else {
+      int.editReply(`❌`);
     }
-    // parse the song
-    const song = /<blockquote>\n(.*)<\/blockquote>/g.exec(response?.data)?.[1]?.replace(/<br ?\/>/g, "\n");
-    // make sure its safe
-    const pf = new profanityFilter();
-    const profane = pf.scan(song?.toLowerCase().replace(/\n/g, " ") ?? "").length;
-    if (!song) {
-      return int.editReply("I uh... broke my voice box. Try a different name?").then(u.clean);
-    } else if (profane > 0) {
-      return int.editReply("Let's try a different one...").then(u.clean);
-    }
-    const embed = u.embed().setTitle(`🎶 The Name Game! ${name}! 🎵`).setDescription(song);
-    return int.editReply({ embeds: [embed] });
   } catch (error) { u.errorHandler(error, int); }
 }
 
-/** @param {Discord.ChatInputCommandInteraction} int */
-async function slashFunChoose(int) {
-  const optionsArg = int.options.getString("options", true);
-  if (optionsArg && optionsArg.includes("|")) {
-    const options = optionsArg.split("|");
-    const prefixes = ["I choose", "I pick", "I decided"];
-    return int.reply(`Out of the options \`${optionsArg}\`, ${u.rand(prefixes)} **${u.rand(options).trim()}**`);
-  }
-  return int.reply({ content: 'you need to give me two or more choices! `a | b`', flags: ["Ephemeral"] });
 
-}
 /**
- * @param {string} emoji unsanitized/irregular emoji input
+ * function chaos
+ * @param {Discord.CommandInteraction} int a /fun chaos interaction
  */
-function emojiSanitize(emoji) {
-  let ucode = emojiSanitizeHelp.find(emoji)?.emoji ?? emoji;
-  ucode = emojiKitchenSpecialCodes[ucode] ?? ucode;
-  return ucode;
+function slashFunChaos(int) {
+  int.editReply({ content:int.user.displayName + ` right now:`, files: [new Discord.AttachmentBuilder('media/chaos.gif')] }).catch(u.errorHandler);
 }
-/** @param {string} emoji */
-function emojiCodePointify(emoji) {
-  return (emojiSanitizeHelp.find(emoji)?.emoji ?? emoji)
-    .split(/\u200D/)
-    .map(char => char.codePointAt(0)?.toString(16)).join("-");
-}
-
-/** @param {Discord.ChatInputCommandInteraction} int */
-async function slashFunGrow(int) {
-  try {
-    // get the inputs
-    await int.deferReply();
-    const emojiInput = int.options.getString("emoji", true);
-    const emoji1 = emojiSanitize(emojiInput);
-    // custom emoji embiggening
-    const idExtractRegx = /^<(a?):(.*):(\d+)>/i;
-    const match = idExtractRegx.exec(emojiInput);
-    if (match) {
-      // eslint-disable-next-line no-unused-vars
-      const [_, gif, name, id] = match;
-      return int.editReply({ files: [{ attachment: `https://cdn.discordapp.com/emojis/${id}.${gif ? 'gif' : 'png'}?size=512`, name: name + "Fullres." + (gif ? 'gif' : 'png') }] });
-    }
-
-    // default emoji embiggening
-    const e1CP = emojiCodePointify(emoji1);
-    // @ts-ignore
-    const image = await axios(`https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest/assets/svg/${e1CP}.svg`).catch(u.noop);
-    if (image?.status !== 200) return int.editReply(`For some reason I couldn't enlarge ${emojiInput}.`).then(u.clean);
-    return int.editReply(`https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest/assets/72x72/${e1CP}.png`);
-  } catch (error) {
-    u.errorHandler(error);
-  }
-}
-
-/** @param {Discord.ChatInputCommandInteraction} int */
-async function slashFunMerge(int) {
-  try {
-    // get the inputs
-    await int.deferReply();
-    const emoji1input = int.options.getString("emoji1", true).trim();
-    const emoji2input = int.options.getString("emoji2", true).trim();
-    const emoji1 = emojiSanitize(emoji1input);
-    // attempt to merge
-    const emoji2 = emojiSanitize(emoji2input);
-    // @ts-ignore
-    const results = await axios(`https://tenor.googleapis.com/v2/featured?key=${config.api.tenor}&client_key=emoji_kitchen_funbox&q=${emoji1}_${emoji2}&collection=emoji_kitchen_v6&contentfilter=high`).catch(u.noop);
-    const url = results?.data?.results[0]?.url;
-    if (url) {
-      return int.editReply({ files: [{ attachment: url, name: "combined.png" }] });
-    }
-    if ((emoji1input + emoji2input).includes("<:")) return int.editReply("I can't combine custom emojis! Try again with some default ones.").then(u.clean);
-    return int.editReply(`For some reason I couldn't combine ${emoji1} and ${emoji2}.`).then(u.clean);
-  } catch (error) {
-    u.errorHandler(error);
-  }
-}
-
-/** @param {Discord.Message|Discord.PartialMessage} msg */
-function buttermelonEdit(msg) {
-  if (msg.channel.isDMBased() && (msg.cleanContent?.toLowerCase() === "test")) {
-    msg.reply((Math.random() < 0.8 ? "pass" : "fail"));
-  }
-  const exclude = [u.sf.channels.minecraft.category];
-  const roll = Math.random();
-  if (roll < 0.3 && !msg.author?.bot && !exclude.includes(msg.channel.id)) {
-    // let banana = /[bß8ƥɓϐβбБВЬЪвᴮᴯḃḅḇÞ][a@∆æàáâãäåāăȁȃȧɑαдӑӓᴀᴬᵃᵅᶏᶐḁạảấầẩẫậắằẳẵặ4Λ]+([nⁿńňŋƞǹñϰпНhийӣӥѝνṅṇṉṋ]+[a@∆æàáâãäåāăȁȃȧɑαдӑӓᴀᴬᵃᵅᶏᶐḁạảấầẩẫậắằẳẵặ4Λ]+){2}/ig;
-    if (msg.content?.toLowerCase().includes("bananas")) {
-      if (roll < 0.1) {
-        msg.reply({ files: ['media/buttermelonsMan.jpeg'] }).catch(u.noop);
-      } else {
-        msg.reply("*buttermelons").catch(u.noop);
-      }
-    } else if (msg.content?.toLowerCase().includes("banana")) {
-      if (roll < 0.06) {
-        msg.reply({ files: ['media/buttermelonPile.png'] }).catch(u.noop);
-      } else if (roll < 0.1) {
-        msg.reply({ files: ['media/buttermelonMan.jpeg'] }).catch(u.noop);
-      } else {
-        msg.reply("*buttermelon").catch(u.noop);
-      }
-    }
-  }
-}
-
 const Module = new Augur.Module()
 .addInteraction({
-  name: "fun",
+  name: `fun`,
   id: u.sf.commands.slashFun,
   process: async (int) => {
     const subcommand = int.options.getSubcommand(true);
+    await int.deferReply(); // { ephemeral: true });
     switch (subcommand) {
-      case "roll": return slashFunRoll(int);
-      case "8ball": return slashFun8ball(int);
-      case "repost": return slashFunRepost(int);
-      case "mines": return slashFunMinesweeper(int);
-      case "minesadvanced": return slashFunMinesweeper(int);
-      case "acronym": return slashFunAcronym(int);
-      case "hbs": return slashFunHBS(int);
-      case "color": return slashFunColor(int);
-      case "buttermelon": return slashFunButtermelon(int);
-      case "quote": return slashFunQuote(int);
-      case "namegame": return slashFunNamegame(int);
-      case "choose": return slashFunChoose(int);
-      case "grow": return slashFunGrow(int);
-      case "merge": return slashFunMerge(int);
-      default: return u.errorHandler(new Error("Unhandled Subcommand"), int);
+      case `roll`: return slashFunRoll(int);
+      case `rollf`: return slashFunRollF(int);
+      case `rollold`: return slashFunRollOld(int);
+      case `8ball`: return slashFun8ball(int);
+      case `repost`: return slashFunRepost(int);
+      case `mines`: return slashFunMinesweeper(int);
+      case `acronym`: return slashFunAcronym(int);
+      case `allthe`: return slashFunAllThe(int);
+      case `hbs`: return slashFunHBS(int);
+      case `color`: return slashFunColor(int);
+      case `hug`: return slashFunHug(int);
+      case `buttermelon`: return slashFunButtermelon(int);
+      case `quote`: return slashFunQuote(int);
+      case `namegame`: return slashFunNamegame(int);
+      case `chaos`: return slashFunChaos(int);
+      default:
+        u.errorLog.send({ embeds: [ u.embed().setDescription(`Error, command ${int} isn't associated with anything in fun.js`)] });
+        return int.editReply(`Thats an error, this command isn't registered properly. I've let my devs know.`);
     }
-  }
+  },
 })
-.addEvent("messageCreate", buttermelonEdit)
-.addEvent("messageUpdate", (oldMsg, msg) => {
-  if (oldMsg.partial || !(oldMsg.cleanContent.toLowerCase().includes("banana"))) {
+.addEvent(`message`, buttermelonEdit)
+.addEvent(`messageUpdate`, (oldMsg, msg) => {
+  if (oldMsg.partial || !(oldMsg.cleanContent.toLowerCase().includes(`banana`))) {
     buttermelonEdit(msg);
   }
-})
-.setInit((data) => {
-  if (data) {
-    storedChoice = data.storedChoice;
-    storedChooser = data.storedChooser;
-  }
-})
-.setUnload(() => {
-  return { storedChoice, storedChooser };
 // })
 // .addEvent(
-//   "messageReactionAdd",
+//   `messageReactionAdd`,
 //   (reaction) => { // could have (reaction, user) as args but lint don't like unused var.
-//     if ((reaction.message.channel.id == u.sf.channels.memes) && (reaction.emoji.name == "♻️")) { //memes channel id will have to be added if this is to be enabled, I don't know if it is still needed or even used by anyone.
+//     if ((reaction.message.channel.id == u.sf.channels.memes) && (reaction.emoji.name == `♻️`)) { //memes channel id will have to be added if this is to be enabled.
 //       reaction.remove();
-//       reaction.message.react("⭐").catch(u.errorHandler);
+//       reaction.message.react(`⭐`).catch(u.errorHandler);
 //     }
 });
 

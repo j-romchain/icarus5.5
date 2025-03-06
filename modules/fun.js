@@ -1,4 +1,20 @@
 const { AxiosError } = require("axios");
+<<<<<<< Updated upstream
+=======
+
+// @ts-check
+const Augur = require("augurbot-ts"),
+  Discord = require("discord.js"),
+  config = require("../config/config.json"),
+  u = require("../utils/utils"),
+  axios = require('axios'),
+  Jimp = require('jimp'),
+  profanityFilter = require("profanity-matcher"),
+  buttermelonFacts = require('../data/buttermelonFacts.json').facts,
+  emojiKitchenSpecialCodes = require("../data/emojiKitchenSpecialCodes.json"),
+  emojiSanitizeHelp = require('node-emoji'),
+  mineSweeperEmojis = ['0⃣', '1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '💣'];
+>>>>>>> Stashed changes
 
 // @ts-check
 <<<<<<< Updated upstream

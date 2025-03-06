@@ -98,6 +98,7 @@ const choose = new u.sub()
 const emoji = new u.sub()
   .setName("emoji")
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
   .setDescription("combines two (non-custom) emoji")
   .addStringOption(
     new u.string()
@@ -112,6 +113,8 @@ const emoji = new u.sub()
 >>>>>>> Stashed changes
     .setRequired(true)
 =======
+=======
+>>>>>>> Stashed changes
   .setDescription("Combines two (non-custom) or enlarges one (any) emoji")
   .addStringOption(
     new u.string()
@@ -123,6 +126,23 @@ const emoji = new u.sub()
     new u.string()
       .setName("emoji2")
       .setDescription("Second emoji to combine")
+<<<<<<< Updated upstream
+=======
+      .setRequired(false)
+  );
+
+const repost = new u.sub()
+  .setName("repost")
+  .setDescription("That's a repost!");
+
+const acronym = new u.sub()
+  .setName("acronym")
+  .setDescription("Get a random acronym. For science.")
+  .addIntegerOption(
+    new u.int()
+      .setName("length")
+      .setDescription("How long of an acronym?")
+>>>>>>> Stashed changes
       .setRequired(false)
 >>>>>>> Stashed changes
   );

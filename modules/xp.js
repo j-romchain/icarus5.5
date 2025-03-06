@@ -94,8 +94,8 @@ async function featherCheck(msg) {
     }).catch(u.noop);
 
     // oop we got a hit!
-    await reaction.remove();
     const finder = userReact?.first()?.users.cache.find(usr => !usr.bot);
+    await reaction.users.remove(finder);
     if (finder) {
       // give em ember if they didn't buy their way in
       if (dropMode) {

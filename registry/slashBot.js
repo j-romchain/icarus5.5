@@ -24,6 +24,10 @@ const pull = new u.sub()
   .setName("pull")
   .setDescription("[OWNER] Pull bot updates from Git.");
 
+const npmi = new u.sub()
+  .setName("npmi")
+  .setDescription("[OWNER] Update node packages.");
+
 const pulse = new u.sub()
   .setName("pulse")
   .setDescription("Get current information about the bot's current health and uptime.");
@@ -112,6 +116,7 @@ const status = new u.sub()
 module.exports = new u.cmd()
   .setName("bot")
   .setDescription("Control the bot! Some actions are limited based on role.")
+  .addSubcommand(npmi)
   .addSubcommand(update)
   .addSubcommand(gotobed)
   .addSubcommand(ping)

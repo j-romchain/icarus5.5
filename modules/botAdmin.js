@@ -83,15 +83,22 @@ async function slashBotGtb(int) {
   }
 }
 
+/**
+ *  @param {Augur.GuildInteraction<"CommandSlash">} int
+ */
 async function slashBotUpdate(int) {
   const startagain = int.options.getBoolean("startagain") ?? false;
   update(int, startagain);
 }
 
-/** @param {import("child_process").ChildProcessWithoutNullStreams} process*/
-/** @return {Promise<{ out: string; err: string; exit: number; }>} */
+/**
+ * @param {import("child_process").ChildProcessWithoutNullStreams} process
+ * @return {Promise<{out: string;err: string;exit: number;}>}
+ */
 async function captureRun(process) {
+  /**@type {String[]}*/
   const stdout = [];
+  /**@type {String[]}*/
   const stderr = [];
   process.stdout.on("data", data => {
     stdout.push(data);
@@ -101,11 +108,13 @@ async function captureRun(process) {
   });
   await new Promise((exit) => process.on("close", () => exit({ success: true })));
   // while (!pullCmd.exitCode) {await u.wait(100);}
-  return { out: stdout.join(""), err: stderr.join(""), exit: process.exitCode };
+  return { out: stdout.join(""), err: stderr.join(""), exit: process.exitCode ?? 0 };
 }
 
-/** @param {Augur.GuildInteraction<"CommandSlash">} int*/
-/** @param {boolean} startagain*/
+/**
+ *  @param {Augur.GuildInteraction<"CommandSlash">} int
+* @param {boolean} startagain
+*/
 async function update(int, startagain) {
   try {
     let reply = "# Updating (with" + (startagain ? "" : "out") + " restart)...\n## Pulling...\n";
@@ -116,7 +125,14 @@ async function update(int, startagain) {
       int.editReply(reply + `# ERROR CODE while pulling: \n${pullResults.exit}:\n${pullResults?.err}`);
       return;
     }
-    reply += "## Pull Completed with code: " + pullResults.exit + "\n ## Registering...\n";
+    reply += "## Pull Completed with code: " + pullResults.exit + "\n ## npm i -ing...\n";
+    const npmiResults = await captureRun(spawn("npm", ["i"], { cwd: process.cwd() }));
+    reply += npmiResults?.out;
+    if (npmiResults?.exit !== 0) {
+      int.editReply(reply + `# ERROR CODE while npm i -ing: \n${npmiResults.exit}:\n${npmiResults?.err}`);
+      return;
+    }
+    reply += "## npm i Completed with code: " + npmiResults.exit + "\n ## Registering...\n";
     int.editReply(reply);
     const regResults = await captureRun(spawn("node", ["register-commands"], { cwd: process.cwd() }));
     reply += regResults.out;
@@ -144,6 +160,15 @@ async function slashBotPing(int, msg) {
 /** @param {Augur.GuildInteraction<"CommandSlash">} int*/
 async function slashBotPull(int) {
   const results = await captureRun(spawn("git", ["pull"], { cwd: process.cwd() }));
+  if (results.exit === 0) {
+    int.editReply(results.out + "\n\nCompleted with code: " + results.exit);
+  } else {
+    int.editReply(`ERROR CODE ${results.exit}:\n${results.err}`);
+  }
+}
+/** @param {Augur.GuildInteraction<"CommandSlash">} int*/
+async function slashBotNPMI(int) {
+  const results = await captureRun(spawn("npm", ["i"], { cwd: process.cwd() }));
   if (results.exit === 0) {
     int.editReply(results.out + "\n\nCompleted with code: " + results.exit);
   } else {
@@ -257,6 +282,7 @@ const Module = new Augur.Module()
       if (["pull", "update"].includes(subcommand) && !u.perms.isOwner(int.member)) return int.editReply("That command is only for the Bot Owner.");
       switch (subcommand) {
         case "update": return slashBotUpdate(int);
+        case "npmi": return slashBotNPMI(int);
         case "gotobed": return slashBotGtb(int);
         case "ping": return slashBotPing(int, forThePing);
         case "pull": return slashBotPull(int);

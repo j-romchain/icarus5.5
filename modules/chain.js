@@ -1,14 +1,22 @@
 // @ts-check
 const Augur = require("augurbot-ts"),
   Discord = require("discord.js"),
+  // eslint-disable-next-line no-unused-vars
   config = require("../config/config.json"),
   u = require("../utils/utils"),
+  // eslint-disable-next-line no-unused-vars
   axios = require('axios'),
+  // eslint-disable-next-line no-unused-vars
   Jimp = require('jimp'),
+  // eslint-disable-next-line no-unused-vars
   profanityFilter = require("profanity-matcher"),
+  // eslint-disable-next-line no-unused-vars
   buttermelonFacts = require('../data/buttermelonFacts.json'),
+  // eslint-disable-next-line no-unused-vars
   emojiKitchenSpecialCodes = require("../data/emojiKitchenSpecialCodes.json"),
+  // eslint-disable-next-line no-unused-vars
   emojiSanitizeHelp = require('node-emoji'),
+  // eslint-disable-next-line no-unused-vars
   mineSweeperEmojis = ['0⃣', '1⃣', '2⃣', '3⃣', '4⃣', '5⃣', '6⃣', '7⃣', '8⃣', '💣'];
 
 /**
@@ -23,7 +31,7 @@ async function hug(int) {
   const hugee = int.options.getUser("hugee", true);
   try {
     const hugImg = u.rand(hugs);
-    hugee.send({ content:`Incoming hug from **${int.user.username}**!`, files: [{ attachment:hugImg, name:"hug.gif" }] });
+    hugee.send({ content: `Incoming hug from **${int.user.username}**!`, files: [{ attachment: hugImg, name: "hug.gif" }] });
     // alternatively:
     // return int.reply({ content:`**${int.user.username}** hugs **${hugee}**!`, files: [{ attachment:hugImg, name:"hug.gif" }] });
     // or just remove the .addSubcommand(hug) line from slashFun.js.
@@ -38,7 +46,7 @@ async function hug(int) {
  */
 async function allthe(int) {
   const thing = int.options.getString('thing') || "";
-  int.reply({ content:`${int.user.username}:\nALL THE ${thing.toUpperCase()}!`, files: [{ attachment:"https://cdn.discordapp.com/emojis/250348426817044482.png", name:"allthe.png" }] });
+  int.reply({ content: `${int.user.username}:\nALL THE ${thing.toUpperCase()}!`, files: [{ attachment: "https://cdn.discordapp.com/emojis/250348426817044482.png", name: "allthe.png" }] });
 }
 /**
  * function rollOldInt
@@ -49,11 +57,11 @@ async function rollOldInt(int) {
   const rollsolts = rollOld(int.options.getString('rollformula'));
   return int.editReply(rollsolts.discordMsg ?? rollsolts.useroutput);
 }
-/** @typedef {{ total:number, rolls:string[], useroutput:string, discordMsg?: string | Discord.MessagePayload | Discord.InteractionEditReplyOptions }} RollSolt *///Object with 3 key/value pairs. total, an int with the total of all of the rolls; rolls, an int[] with the result of each roll; and useroutput, output or error in human readable format
+/** @typedef {{ total:number, rolls:string[], useroutput:string, discordMsg?: string | Discord.MessagePayload | Discord.InteractionEditReplyOptions }} RollSolt */// Object with 3 key/value pairs. total, an int with the total of all of the rolls; rolls, an int[] with the result of each roll; and useroutput, output or error in human readable format
 /**
  * function rollOld
  * @param {String | null} rollFormula roll formula in old !roll format
- * @returns {RollSolt} 
+ * @returns {RollSolt}
  */
 function rollOld(rollFormula) {
   if (!rollFormula) rollFormula = "1d6";
@@ -63,127 +71,124 @@ function rollOld(rollFormula) {
   /** @type {DisectedDie[]} */
   const disectedDice = [];
   let totalRolls = 0;
-  for (const formula of diceFormulas){
+  for (const formula of diceFormulas) {
     /** @type {DisectedDie} */
-    let ret = { type: "Error", num: NaN, sides:NaN, sign:1, formula:formula, rolls:[], total:0};
-    const signlessFormula=formula.replace("-","");
-    ret.sign=formula.startsWith("-") ? -1:1;
+    const ret = { type: "Error", num: NaN, sides: NaN, sign: 1, formula: formula, rolls: [], total: 0 };
+    const signlessFormula = formula.replace("-", "");
+    ret.sign = formula.startsWith("-") ? -1 : 1;
     if (signlessFormula.includes("d")) {
       if (!signlessFormula.includes("f")) {
-        ret.type="norm";
-        ret.num=parseInt(signlessFormula.split("d")[0],10);
-        ret.sides=parseInt(signlessFormula.split("d")[1],10);
+        ret.type = "norm";
+        ret.num = parseInt(signlessFormula.split("d")[0], 10);
+        ret.sides = parseInt(signlessFormula.split("d")[1], 10);
       } else {
-        ret.type="fate";
-        ret.num=parseInt(signlessFormula.split("d")[0],10);
-        ret.sides=3;
+        ret.type = "fate";
+        ret.num = parseInt(signlessFormula.split("d")[0], 10);
+        ret.sides = 3;
       }
     } else {
-      ret.type="mod";
-      ret.num=1;
-      ret.sides=parseInt(signlessFormula,10);
+      ret.type = "mod";
+      ret.num = 1;
+      ret.sides = parseInt(signlessFormula, 10);
     }
     if (Object.values(ret).includes(NaN)) {
-      ret.type="Error"
+      ret.type = "Error";
       disectedDice.push(ret);
     } else {
-      totalRolls+=ret.num;
+      totalRolls += ret.num;
       disectedDice.push(ret);
     }
   }
   const maxArrayLen = 112813858; // found via trial and error, and found to have some weird bugs in the nodejs system.
   if (totalRolls > maxArrayLen) {
-    return { total:0, rolls:[], useroutput: `I litterally can't roll that many dice... software limit is ${maxArrayLen} total rolls. (also note that at that number the total also overflows and starts counting up from -that number...)`};
+    return { total: 0, rolls: [], useroutput: `I litterally can't roll that many dice... software limit is ${maxArrayLen} total rolls. (also note that at that number the total also overflows and starts counting up from -that number...)` };
   }
   let total = 0;
-  let allRolls = [];
-  let errors = [];
+  /** @type {string[]} */
+  const allRolls = [];
+  const errors = [];
   for (const disectedDie in disectedDice) {
     const die = disectedDice[disectedDie];
     switch (die.type) {
       case "norm":
-        die.total=0;
-        die.rolls=[];
+        die.total = 0;
+        die.rolls = [];
         for (let rollNum = 0; rollNum < die.num; rollNum++) {
           const roll = Math.ceil(Math.random() * die.sides) * die.sign;
-          die.total+=roll;
+          die.total += roll;
           die.rolls.push(roll);
         }
         total += die.total;break;
       case "fate":
-        die.total=0;
-        die.rolls=[];
+        die.total = 0;
+        die.rolls = [];
         for (let rollNum = 0; rollNum < die.num; rollNum++) {
-          const roll = (Math.floor(Math.random() * die.sides) - Math.floor(die.sides/2)) * die.sign;
-          die.total+=roll;
+          const roll = (Math.floor(Math.random() * die.sides) - Math.floor(die.sides / 2)) * die.sign;
+          die.total += roll;
           die.rolls.push(roll);
         }
         total += die.total;break;
       case "mod":
-        die.total=die.sides;
-        die.rolls=[die.sides];
-        total+=die.total;
-      case "Error":errors.push(die);break;
+        die.total = die.sides;
+        die.rolls = [die.sides];
+        total += die.total;break;
+      case "Error":default:errors.push(die);break;
     }
   }
   if (disectedDice.length > 0) {
     const maxStringLen = 536870888;
-    function addData(bufferPair,newData) {
-      console.log("save");
+    /** @type {(bufferPair:{ buffer:Buffer, supposedBufferLength:number, stringableContent:string|null },newData:string) => any} */
+    const addData = (bufferPair, newData) => {
       if (bufferPair.stringableContent && (bufferPair.stringableContent.length + newData.length > maxStringLen)) {
-        bufferPair.stringableContent=null;
+        bufferPair.stringableContent = null;
       } else {
-        bufferPair.stringableContent+=newData;
+        bufferPair.stringableContent += newData;
       }
-      bufferPair.supposedBufferLength+=newData.length;
-      bufferPair.buffer = Buffer.concat([bufferPair.buffer,Buffer.from(newData)])
-      return bufferPair;  
-    }
-    const goodRolls = disectedDice.filter((v)=>v.type!="Error");
+      bufferPair.supposedBufferLength += newData.length;
+      bufferPair.buffer = Buffer.concat([bufferPair.buffer, Buffer.from(newData)]);
+      return bufferPair;
+    };
+    const goodRolls = disectedDice.filter((v) => v.type !== "Error");
     const errorRolls = errors;
     // const tmp = goodRolls[0].rolls.join(" + ");
     // console.log(tmp);
-    const responseHead = 
+    const responseHead =
 `You rolled \`${goodRolls.map((roll) => roll.formula).join("+")}\` and got:
-**${total}**` + 
+**${total}**` +
 (errorRolls.length > 0 ? `\n\nThe following formulas don't make sense to me:
-\`\`\`${errorRolls.map((roll) => roll.formula).join("+")}\`\`\``:"");
+\`\`\`${errorRolls.map((roll) => roll.formula).join("+")}\`\`\`` : "");
     /** @type {{ buffer:Buffer, supposedBufferLength:number, stringableContent:string|null }} */
-    const rollSolts = { buffer:Buffer.from(""), supposedBufferLength:0, stringableContent:"" };
+    const rollSolts = { buffer: Buffer.from(""), supposedBufferLength: 0, stringableContent: "" };
     goodRolls.forEach(die => {
       let pendingData = die.formula + "=>" + die.total + "(";
-      console.log("hi")
-      die.rolls.forEach((roll,index) => {
-        pendingData+=roll;
-        if (index !== die.rolls.length-1) {
-          pendingData+=" + "
-          if (pendingData.length > maxStringLen/2) {
-            addData(rollSolts, pendingData)
-            pendingData="";
+      die.rolls.forEach((roll, index) => {
+        pendingData += roll;
+        if (index !== die.rolls.length - 1) {
+          pendingData += " + ";
+          if (pendingData.length > maxStringLen / 2) {
+            addData(rollSolts, pendingData);
+            pendingData = "";
           }
         }
-      })
-      console.log("ho")
-      pendingData+=") + \n";
+      });
+      pendingData += ") + \n";
       addData(rollSolts, pendingData);
-      pendingData="";
-      console.log("har")
+      pendingData = "";
     });
-    const rollsoltsEndOfMessage = "\n" + (goodRolls.length>0 ? `Here is the equasion for the good rolls:\`\`\`\n`
-      + (rollSolts.stringableContent ?? "ERROR") + "```":"")
+    const rollsoltsEndOfMessage = "\n" + (goodRolls.length > 0 ? `Here is the equasion for the good rolls:\`\`\`\n`
+      + (rollSolts.stringableContent ?? "ERROR") + "```" : "");
     const fullResponse = responseHead + rollsoltsEndOfMessage;
     if (fullResponse.length < 2000 && rollSolts.stringableContent) {
-      return { total:total, rolls:allRolls, useroutput:fullResponse};  
+      return { total: total, rolls: allRolls, useroutput: fullResponse };
     }
-    console.log(fullResponse.length + rollSolts.supposedBufferLength);
-    const maxDiscordChars = 10000000*2;
+    const maxDiscordChars = 10000000 * 2;
     if (fullResponse.length + rollSolts.supposedBufferLength < maxDiscordChars) {
-      return { total:total, rolls:allRolls, useroutput:responseHead, discordMsg:{content:responseHead, files:[{attachment:rollSolts.buffer, name:"rollsolts.txt"}]} };
+      return { total: total, rolls: allRolls, useroutput: responseHead, discordMsg: { content: responseHead, files: [{ attachment: rollSolts.buffer, name: "rollsolts.txt" }] } };
     }
-    return { total:total, rolls:allRolls, useroutput:responseHead+"\nThere were so many rolls I can't even attatch all of them in a file. ~"+(fullResponse.length + rollSolts.supposedBufferLength)+" chars(max of ~"+maxDiscordChars+" chars)"};
-  } else {
-    return { total:0, rolls:[], useroutput:"nothing you gave me made sense enough to roll."};
+    return { total: total, rolls: allRolls, useroutput: responseHead + "\nThere were so many rolls I can't even attatch all of them in a file. ~" + (fullResponse.length + rollSolts.supposedBufferLength) + " chars(max of ~" + maxDiscordChars + " chars)" };
   }
+  return { total: 0, rolls: [], useroutput: "nothing you gave me made sense enough to roll." };
+
 }
 /**
  * function rollFInt
@@ -191,13 +196,13 @@ function rollOld(rollFormula) {
  */
 async function rollFInt(int) {
   await int.deferReply();
-  const rollsolts = rollf(int.options.getInteger('dice'), int.options.getInteger('modifier'));
+  const rollsolts = rollf(int.options.getInteger('dice', true), int.options.getInteger('modifier') ?? 0);
   return int.reply(rollsolts.useroutput);
 }
 /**
  * function rollf
- * @param int dice number of dice to roll (defaults to 1)
- * @param int modifier modifier to add to roll result (defaults to 0)
+ * @param {number} dice number of dice to roll (defaults to 1)
+ * @param {number} modifier modifier to add to roll result (defaults to 0)
  * @returns {RollSolt} Object with 3 key/value pairs. total, an int with the total of all of the rolls; rolls, an int[] with the result of each roll; and useroutput, output or error in human readable format
  */
 function rollf(dice, modifier) {
@@ -210,15 +215,15 @@ function rollf(dice, modifier) {
       rolls.push((Math.floor(Math.random() * 3) - 1));
     }
   } else {
-    return { total:0, rolls:[], useroutput:"I litterally can't roll that many dice... software limit is 4294967293." };
+    return { total: 0, rolls: [], useroutput: "I litterally can't roll that many dice... software limit is 4294967293." };
   }
   if (rolls.length > 0) {
     const response = `You rolled ` + dice + `df and got:\n${rolls.reduce((c, d) => c + d, 0)}`
     + ((rolls.length > 20) ? "" : ` (${rolls.join(", ")})`);
-    return { total:rolls.reduce((c, d) => c + d, 0), rolls:rolls.map((v) => v+""), useroutput:response };
-  } else {
-    return { total:0, rolls:[], useroutput:"you didn't give me anything to roll." };
+    return { total: rolls.reduce((c, d) => c + d, 0), rolls: rolls.map((v) => v + ""), useroutput: response };
   }
+  return { total: 0, rolls: [], useroutput: "you didn't give me anything to roll." };
+
 }
 const Module = new Augur.Module()
 .addInteraction({
@@ -235,4 +240,5 @@ const Module = new Augur.Module()
     }
   }
 });
+
 module.exports = Module;

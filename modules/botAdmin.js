@@ -96,9 +96,9 @@ async function slashBotUpdate(int) {
  * @return {Promise<{out: string;err: string;exit: number;}>}
  */
 async function captureRun(process) {
-  /**@type {String[]}*/
+  /** @type {String[]}*/
   const stdout = [];
-  /**@type {String[]}*/
+  /** @type {String[]}*/
   const stderr = [];
   process.stdout.on("data", data => {
     stdout.push(data);

@@ -58,6 +58,8 @@ function fieldMismatches(obj1, obj2) {
   return [m1, m2];
 }
 
+let warned = false;
+
 /** @param {Discord.Client} client */
 async function stop(client) {
   await client.destroy();
@@ -76,6 +78,18 @@ async function restart(client) {
 async function slashBotGtb(int) {
   const startagain = int.options.getBoolean("startagain") ?? false;
   try {
+    // prevent double cakedays if possible
+    if (!warned && u.moment().hours() === 15) {
+      await int.editReply("It's cakeday and birthday hour! If you really need to restart, run this again.");
+
+      warned = true;
+      return setTimeout(() => {
+        warned = false;
+      }, 5 * 60_000);
+    }
+    await int.editReply("Good night! 🛏");
+    await int.client.destroy();
+    process.exit();
     await int.editReply(startagain ? "ZZZZZzzzzz 🛏" : "Good night! 🛏");
     startagain ? restart(int.client) : stop(int.client);
   } catch (error) {

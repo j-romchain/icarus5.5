@@ -78,6 +78,8 @@ async function restart(client) {
 async function slashBotGtb(int) {
   const startagain = int.options.getBoolean("startagain") ?? false;
   try {
+    const keepCache = int.options.getBoolean("keep-stream-cache") ?? true;
+
     // prevent double cakedays if possible
     if (!warned && u.moment().hours() === 15) {
       await int.editReply("It's cakeday and birthday hour! If you really need to restart, run this again.");
@@ -87,7 +89,17 @@ async function slashBotGtb(int) {
         warned = false;
       }, 5 * 60_000);
     }
+
     await int.editReply("Good night! 🛏");
+
+    // store the stream cache if applicable
+    if (keepCache) {
+      /** @type {import("./streaming").StreamingShared} */
+      const shared = int.client.moduleManager.shared.get("streaming.js");
+      if (!shared) await u.errorHandler(new Error("Couldn't find streaming.js shared"));
+      else shared.writeCache();
+    }
+
     await int.client.destroy();
     process.exit();
     await int.editReply(startagain ? "ZZZZZzzzzz 🛏" : "Good night! 🛏");
@@ -280,6 +292,12 @@ async function slashBotStatus(int) {
   return int.editReply("Status updated!");
 }
 
+/** @param {Augur.GuildInteraction<"CommandSlash">} int*/
+async function slashBotError(int) {
+  await int.editReply("Throwing error! yEEEET!!!");
+  u.errorHandler(new Error(`${int.member.displayName} caused a controlled error!`));
+}
+
 const Module = new Augur.Module()
   .addInteraction({
     name: "bot",
@@ -306,7 +324,8 @@ const Module = new Augur.Module()
         case "register": return slashBotRegister(int);
         case "status": return slashBotStatus(int);
         case "sheets": return slashBotSheets(int);
-        default: return u.errorHandler(new Error("Unhandled Subcommand"), int);
+        case "error": return slashBotError(int);
+      default: return u.errorHandler(new Error("Unhandled Subcommand"), int);
       }
     },
     autocomplete: (int) => {
@@ -315,7 +334,54 @@ const Module = new Augur.Module()
       int.respond(files.filter(file => file.includes(option)).slice(0, 24).map(f => ({ name: f, value: f })));
     }
   })
-  .addCommand({
+  .addInteraction({
+  id: u.sf.commands.messageEditMessage,
+  name: "Edit",
+  type: "ContextMessage",
+  onlyGuild: true,
+  permissions: (int) => u.perms.calc(int.member, ["mgr"]),
+  process: async (int) => {
+    const msg = await int.targetMessage.fetch().catch(u.noop);
+    if (!msg) return int.reply({ content: "Sorry, I couldn't find the message.", flags: ["Ephemeral"] });
+    if (msg.author.id !== int.client.user.id || !msg.editable) return int.reply({ content: "Sorry, I can't edit that message.", flags: ["Ephemeral"] });
+
+    const modal = new u.Modal()
+      .addComponents(
+        u.ModalActionRow()
+          .setComponents(
+            new u.TextInput()
+              .setCustomId("content")
+              .setLabel("Message Content (leave blank to delete)")
+              .setValue(msg.content)
+              .setPlaceholder("Leave blank to delete")
+              .setStyle(Discord.TextInputStyle.Paragraph)
+              .setMaxLength(4000)
+              .setRequired(false)
+          )
+      )
+      .setTitle("Message Edit/Delete")
+      .setCustomId(`sme${int.id}`);
+
+    await int.showModal(modal);
+    const res = await int.awaitModalSubmit({ time: 5 * 60_000, dispose: true }).catch(u.noop);
+    if (!res) return await int.editReply("I fell asleep waiting for your input...");
+
+    const content = res.fields.getTextInputValue("content");
+    await res.deferReply({ flags: ["Ephemeral"] });
+
+    if (!content) {
+      const del = await msg.delete().catch(u.noop);
+      if (!del) return res.editReply("Sorry, I couldn't delete the message.");
+      return res.editReply("Message deleted!");
+    }
+
+    const edit = await msg.edit({ content }).catch(u.noop);
+    if (!edit) return res.editReply("Sorry, I couldn't edit the message.");
+
+    return res.editReply("Message edited!");
+  }
+})
+.addCommand({
     name: "mcweb",
     hidden: true,
     permissions: () => config.devMode,

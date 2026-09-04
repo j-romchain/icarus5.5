@@ -2,12 +2,10 @@
 const Augur = require("augurbot-ts"),
   u = require("../utils/utils"),
   c = require("../utils/modCommon"),
-  Discord = require("discord.js"),
-  /** @type {string[]} */
-  banned = require("../data/banned.json").features.flag;
+  Discord = require("discord.js");
 
 const menuOptions = require("../data/modMenuOptions.json"),
-  menuFlagOptions = require("../data/modMenuFlagOptions.json"),
+  // menuFlagOptions = require("../data/modMenuFlagOptions.json"),
   time = 5 * 60 * 1000,
   noTime = "I fell asleep waiting for your input...";
 
@@ -20,19 +18,19 @@ const menuOptions = require("../data/modMenuOptions.json"),
 /** @param {Discord.AnySelectMenuInteraction} int */
 function usrErr(int) {
   const content = "I couldn't find the user! They may have left the server.";
-  return int.replied ? edit(int, content) : int.update({ content, components: [], embeds: [] });
+  return (int.replied || int.deferred) ? edit(int, content) : int.update({ content, components: [], embeds: [] });
 }
 
 /** @param {Discord.AnySelectMenuInteraction} int */
 function msgErr(int) {
   const content = "I couldn't find the message! It might have been deleted.";
-  return int.replied ? edit(int, content) : int.update({ content });
+  return (int.replied || int.deferred) ? edit(int, content) : int.update({ content });
 }
 
 /**
  * Handle replying to an interaction with components
- * @param {Discord.CommandInteraction|Discord.AnySelectMenuInteraction|Discord.ModalSubmitInteraction} int
- * @param {Discord.MessageEditOptions|string} payload
+ * @param {Discord.CommandInteraction|Discord.AnySelectMenuInteraction|Discord.ModalSubmitInteraction|Discord.ButtonInteraction} int
+ * @param {Discord.MessageEditOptions|Discord.MessagePayload|string} payload
  */
 function edit(int, payload) {
   const obj = { embeds: [], components: [], attachments: [], files: [], content: "" };
@@ -42,6 +40,7 @@ function edit(int, payload) {
   } else {
     payload = Object.assign(obj, payload);
   }
+
   return int.editReply(payload);
 }
 
@@ -83,48 +82,52 @@ async function avatar(int, target) {
   const image = new u.Attachment(target.displayAvatarURL({ extension: 'png' }), { name: 'avatar.png' });
   return edit(int, { embeds: [embed], files: [image] });
 }
-/** @type {both} */
-async function flagReason(int, msg, usr) {
-  const reasons = u.MessageActionRow()
-    .addComponents(
-      new u.SelectMenu.String()
-        .setCustomId("flagReason")
-        .setMaxValues(3)
-        .setMinValues(1)
-        .setPlaceholder("Select why you're flagging it")
-        .setOptions(menuFlagOptions.map(f =>
-          new u.SelectMenu.StringOption()
-            .setDefault(false)
-            .setDescription(f.description)
-            .setEmoji(f.emoji)
-            .setLabel(f.label)
-            .setValue(f.value)
-        ))
-    );
+// /** @type {both} */
+// async function flagReason(int, msg, usr) {
+//   const reasons = u.MessageActionRow()
+//     .addComponents(
+//       new u.SelectMenu.String()
+//         .setCustomId("flagReason")
+//         .setMaxValues(2)
+//         .setMinValues(1)
+//         .setPlaceholder("Select why you're flagging it")
+//         .setOptions(menuFlagOptions.map(f =>
+//           new u.SelectMenu.StringOption()
+//             .setDefault(false)
+//             .setDescription(f.description)
+//             .setEmoji(f.emoji)
+//             .setLabel(f.label)
+//             .setValue(f.value)
+//         ))
+//     );
 
-  const responseMsg = await edit(int, { components: [reasons] });
-  const response = await responseMsg.awaitMessageComponent({ componentType: Discord.ComponentType.StringSelect, time, dispose: true }).catch(() => {
-    edit(int, noTime);
-    return;
-  });
-  if (response && response.inCachedGuild()) return flag(response, msg, usr);
-  return edit(int, noTime);
-}
+//   const responseMsg = await edit(int, { components: [reasons] });
+//   const response = await responseMsg.awaitMessageComponent({ componentType: Discord.ComponentType.StringSelect, time, dispose: true }).catch(() => {
+//     edit(int, noTime);
+//     return;
+//   });
+
+//   if (response && response.inCachedGuild()) return flag(response, msg, usr);
+//   return edit(int, noTime);
+// }
 /**
  * @type {both}
  * @param {Discord.GuildMember} usr
  */
 async function flag(int, msg, usr) {
   if (!usr) return usrErr(int);
-  await int.deferUpdate();
-  const reason = int.values.map(v => menuFlagOptions.find(o => o.value === v)?.label).join(', ');
-  if (reason.includes("Mod Abuse") && !u.perms.calc(usr, ["mod", "mcMod", "mgr"])) return edit(int, "Only Moderators can be flagged for mod abuse.");
+  // await int.deferUpdate();
+  // const reason = int.values.map(v => menuFlagOptions.find(o => o.value === v)?.label).join(', ');
+
+  // if (reason.includes("Mod Abuse") && !u.perms.calc(usr, ["mod", "mcMod", "mgr"])) return edit(int, "Only Moderators can be flagged for mod abuse.");
+
   if (msg) {
     // Don't let them know it was already flagged, but also don't create a duplicate
     const existing = await u.db.infraction.getByMsg(msg.id);
     if (existing) return edit(int, "Your report has been created! Moderators may reach out if they need more details.");
   }
-  const madeFlag = await c.createFlag({ msg: msg ?? undefined, member: usr, pingMods: false, snitch: int.member, flagReason: reason }, int);
+
+  const madeFlag = await c.createFlag({ msg: msg ?? undefined, member: usr, pingMods: false, snitch: int.member, flagReason: "User Report" /* reason */ }, int);
   if (madeFlag) return edit(int, "Your report has been created! Moderators may reach out if they need more details.");
   return edit(int, "Sorry, I ran into an error while creating your report. Please let the moderators know about the issue.");
 }
@@ -294,8 +297,10 @@ async function kickUser(int, usr) {
   if (reason) {
     await reason.deferUpdate();
     const r = reason.fields.getTextInputValue("reason");
-    const timeout = await c.kick(int, usr, r);
-    return edit(reason, timeout);
+    const kickResponse = await c.kick(int, usr, r);
+    if (!kickResponse) return;
+
+    return edit(kickResponse.interaction, kickResponse.payload);
   }
   return int.update(noTime);
 
@@ -307,8 +312,10 @@ async function banUser(int, usr) {
   if (reason) {
     await reason.deferUpdate();
     const r = reason.fields.getTextInputValue("reason");
-    const timeout = await c.ban(int, usr, r);
-    return edit(reason, timeout);
+    const banResponse = await c.ban(int, usr, r);
+    if (!banResponse) return;
+
+    return edit(banResponse.interaction, banResponse.payload);
   }
   return int.update(noTime);
 
@@ -356,7 +363,7 @@ async function purgeChannel(int, msg) {
 async function spamCleanup(int, msg) {
   if (!msg) return msgErr(int);
   await edit(int, "Searching for and cleaning spam...");
-  const cleaned = await c.spamCleanup([msg.content.toLowerCase()], msg.guild, msg, false);
+  const cleaned = await c.spamCleanup([msg.content.toLowerCase()], msg.guild, msg, false, true);
   if (!cleaned) return edit(int, "I couldn't find any recent messages that matched this one.");
   // Log it
   int.client.getTextChannel(u.sf.channels.mods.logs)?.send({ embeds: [
@@ -371,7 +378,7 @@ async function spamCleanup(int, msg) {
       .setColor(c.colors.info)
   ] });
 
-  edit(int, `I deleted ${cleaned.deleted} messages in the following channel(s):\n${cleaned.channels.join("\n")}`);
+  edit(int, `I deleted ${cleaned.deleted} messages in ${cleaned.channels.length} channel(s):\n${cleaned.channels.join("\n")}`.substring(0, 4000));
 }
 /** @type {message} */
 async function announceMessage(int, msg) {
@@ -385,11 +392,15 @@ async function announceMessage(int, msg) {
 */
 async function handleModMenu(submitted, oldInt) {
   const components = permComponents(oldInt);
+
   const component = components.find(cmp => cmp.value === submitted.values[0]);
   if (!component) return submitted.update({ content: "I couldn't find that command!", components: [] });
+
   const message = oldInt.isMessageContextMenuCommand() ? oldInt.targetMessage : null;
   const user = oldInt.isUserContextMenuCommand() ? oldInt.targetMember ?? oldInt.targetUser : message?.member ?? null;
+
   if (!user && !message) return u.errorHandler(null, "No user or message on modMenu");
+
   // These commands require additional input and can't be defered
   switch (submitted.values[0]) {
     case "noteUser": return noteUser(submitted, user);
@@ -410,7 +421,7 @@ async function handleModMenu(submitted, oldInt) {
     case "spamCleanup": return spamCleanup(submitted, message);
     case "announceMessage": return announceMessage(submitted, message);
     case "userAvatar": return avatar(submitted, user);
-    case "flag": return flagReason(submitted, message, user);
+    case "flag": return flag(submitted, message, user);
     case "pinMessage": return pin(submitted, message);
     case "userSummary": return userSummary(submitted, user);
     case "trustUser": return trustUser(submitted, user, true);
@@ -427,7 +438,7 @@ async function handleModMenu(submitted, oldInt) {
 /** @param {Augur.GuildInteraction<"ContextBase">} int */
 function permComponents(int) {
   let components = [...menuOptions.everyone];
-  if (!banned.includes(int.user.id)) components.push(menuOptions.flag);
+  if (!c.getBanList().features.flag.includes(int.user.id)) components.push(menuOptions.flag);
   if (u.perms.calc(int.member, ['mod', 'mgr'])) components = components.concat(menuOptions.mod);
   if (u.perms.calc(int.member, ['mgr', 'mgmt'])) components = components.concat(menuOptions.mgmt);
   return components.filter(cmp => (

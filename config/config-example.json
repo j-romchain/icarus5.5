@@ -1,4 +1,5 @@
 {
+  "$schema": "./config-schema.json",
   "adminId": [
     "put any user IDs that need to control the bot here"
   ],
@@ -6,14 +7,13 @@
   "api": {
     "tenor": "You can get your API key for this and more info at https://console.cloud.google.com/apis/library/tenor.googleapis.com",
     "snipcart": "we don't have a way to test the API right now",
+    "thegamesdb": "",
     "challonge": "https://api.challonge.com/v1"
   },
   "applicationId": "https://discord.com/developers/applications",
   "color": "0xf89a22",
   "db": {
-    "model": "database/dbControllers.js",
-    "note": "(Don't change this value, it's a note.) Connection string format: (mongodb(+srv?) or localhost:27017)://<username>:<password>@<connection>",
-    "db": "localhost:27017/icarus or mongodb(+srv?)://<connection>/icarus",
+    "db": "mongodb://localhost:27017/icarus or mongodb+srv://<connection>/icarus",
     "settings": {
       "useNewUrlParser": true,
       "useUnifiedTopology": true,
@@ -28,7 +28,9 @@
   "webhooks": {
     "error": "Webhook url for errors",
     "watchlist": "Webhook url for #watch-list",
-    "mcTesting": "Webhook url for testing interactions with Minecraft chat"
+    "mcTesting": "Webhook url for testing interactions with Minecraft chat",
+    "mutedHistory": "Webhook url for recording muted channel history",
+    "officeHistory": "Webhook url for recording office channel history"
   },
   "events": [
     "channelCreate",
@@ -49,14 +51,14 @@
     "userUpdate",
     "voiceStateUpdate"
   ],
+  "getMessageContent": true,
+  "processDMs": true,
   "google": {
     "mail": {
-      "enabled":false,
-      "note": "you may be able to just use your password if you don't have 2 factor enabled, but I know if you have 2 factor enabled you can search 'app password' in security settings and generate an app password to put here - works as of 4-15-2025",
+      "enabled": false,
       "email": "missionmail@ldsgamers.com",
-      "gAccountAppPass": ""
+      "pass": "Use an app password. Google it if you need more info"
     },
-    "api": "You can get your API key for this and more info at https://console.cloud.google.com/apis/library/sheets.googleapis.com",
     "creds": {
       "type": "Create a project, give it access to google sheets, and create a service account credential. Download the JSON and that should fit in this object",
       "project_id": "",
@@ -75,13 +77,17 @@
       "applications": ""
     }
   },
+  "twitch": {
+    "enabled": false,
+    "clientId": "https://dev.twitch.tv",
+    "clientSecret": "^",
+    "elTeam": "Extra Life Team ID"
+  },
   "prefix": "! (change this to something unique)",
   "spamThreshold":  {
-    "channels": [10, 8],
-    "messages": [10, 8],
-    "same": [5, 5],
-    "time": 7,
-    "cleanupLimit": 90
+    "messageCount": 5,
+    "cleanupLimit": 90,
+    "time": 60
   },
   "token": "Put your bot token here (https://discord.com/developers/applications)",
   "memberMilestone": {
@@ -89,6 +95,7 @@
     "count": 5000
   },
   "badgePath": "./media/badges",
+  "tagFilePath": "./media/tags",
   "xp": {
     "base": 25,
     "featherCooldown": 3,

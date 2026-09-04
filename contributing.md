@@ -44,8 +44,8 @@ Instructions for local installation
 Explanations of these files can be found in the [File Explanations section](#file-explanations).
 
 6. Within the root folder of the repo, run `npm ci` to install the dependencies.
-7. Run `node register-commands.js` to register all of the interaction commands with the Discord API.
-8. Start the bot by running `node .`
+
+Steps 7 and 8 occur after setting up config.json, and will be explained later.
 
 ## File Explanations
 For the bot to successfully run, you'll need to edit your configuration file first. This file, for obvious security reasons, are excluded from the repository. However, an example file is provided to make setup easier.
@@ -85,6 +85,11 @@ This contains words that trigger an auto-mute when someone says one of them. The
 ### `config/snowflakes-testing-commands.json`
 This contains the IDs of the slash and context commands. The provided example can be copied without modification. It will be automatically filled out when you run `node register-commands.js`.
 
+## Setup (cont.)
+7. Run `node register-commands.js` to register all of the interaction commands with the Discord API.
+8. Start the bot by running `node .`
+
+
 # Contributing
 
 ## Software
@@ -114,6 +119,7 @@ In order for a pull request to be approved, the following requirements have to b
 - A quick look through by both parties of all modified files to see if any features should behave differently
 - All user seen strings need to be LDSG-Worthy
 - All changes to `config.json` (new properties, changed defaults, etc) need to be reflected in `config/config-example.json` with a description if possible
+- All changes to `config.json` need to be reflected in `config-schema.json` with a type, description, and default value if applicable.
 - All IDs (snowflakes) need to be put in `config/snowflakes.json` (real server IDs) and `config/snowflakes-testing.json` (testing server IDs).
 - All interactions that need registration must follow the style of the existing files in `/registry`
 - All functions must have sufficient valid JSDoc describing the types of parameters, as well as the return type if really needed. This includes variables like `Collections` and `Array`s, which by default are typed to contain `any` or `never` unless an initial value is passed in.

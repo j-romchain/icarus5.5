@@ -3,9 +3,7 @@ const Augur = require("augurbot-ts"),
   Discord = require('discord.js'),
   u = require("../utils/utils"),
   c = require("../utils/modCommon"),
-  config = require('../config/config.json'),
-  /** @type {string[]} */
-  banned = require("../data/banned.json").features.welcome;
+  config = require('../config/config.json');
 
 const mutedPerms = {
   // text
@@ -20,37 +18,38 @@ const mutedPerms = {
 };
 
 let lowBoosts = false;
-const tier3 = 14;
+const TIER_3_MIN = 14;
 
-/**
- * @typedef Sponsor
- * @prop {string} Sponsor The sponsor's ID
- * @prop {string} Channel The sponsor's channel ID
- * @prop {string} Emoji The sponsor's reaction emoji ID
- */
 // roles that SHOULD NOT be given when a user rejoins
 const dangerRoles = [
-  ...Object.values(u.sf.roles.team).filter(sf => ![u.sf.roles.team.botTeam, u.sf.roles.team.emeritus].includes(sf)),
-  u.sf.roles.live, u.sf.roles.houses.head, u.sf.roles.houses.emberGuardian,
+  u.sf.roles.team.logistics,
+  u.sf.roles.team.management,
+  u.sf.roles.team.manager,
+  u.sf.roles.team.minecraftMod,
+  u.sf.roles.team.mod,
+  u.sf.roles.team.operations,
+  u.sf.roles.team.operations,
+  u.sf.roles.team.theNextChapter,
+  u.sf.roles.team.volunteer,
+  u.sf.roles.streaming.sub,
+  u.sf.roles.streaming.live, u.sf.roles.houses.head, u.sf.roles.houses.emberGuardian,
 ];
 
-const emojis = [
-  ["buttermelon", u.sf.emoji.buttermelon],
-  ["noice", u.sf.emoji.noice],
-  ["carp", "🐟"]
-];
+const infoButton = u.MessageActionRow().addComponents(new u.Button().setCustomId("timeModInfo").setEmoji("👤").setLabel("User Info").setStyle(Discord.ButtonStyle.Secondary));
 
 /**
- * Log user updates
+ * Log user profile updates
  * @param {Discord.GuildMember | Discord.PartialGuildMember | Discord.User | Discord.PartialUser} oldUser
  * @param {Discord.GuildMember | Discord.User} newUser
  */
-async function update(oldUser, newUser) {
+async function userUpdate(oldUser, newUser) {
   try {
     const ldsg = newUser.client.guilds.cache.get(u.sf.ldsg);
     const newMember = ldsg?.members.cache.get(newUser.id);
+
     if (oldUser.partial) oldUser = await oldUser.fetch().catch(() => oldUser);
     if (oldUser.partial) return; // failed to fetch
+
     const user = await u.db.user.fetchUser(newUser.id);
     if (newMember && (!newMember.roles.cache.has(u.sf.roles.moderation.trusted) || user?.watching)) {
       const embed = u.embed({ author: oldUser })
@@ -62,6 +61,8 @@ async function update(oldUser, newUser) {
         oldUser instanceof Discord.User ? oldUser.username : oldUser.displayName,
         newUser instanceof Discord.User ? newUser.username : newUser.displayName
       ];
+
+      // Username updates
       if (oldUser.displayName !== newUser.displayName || usernames[0] !== usernames[1]) {
         /** @param {string} a @param {string} b */
         const same = (a, b) => u.escapeText(a === b ? a : `${a} (${b})`);
@@ -71,64 +72,65 @@ async function update(oldUser, newUser) {
           { name: "New Username", value: same(usernames[1], newUser.displayName) }
         );
       }
+
+      // Avatar updates
       if (oldUser.avatar !== newUser.avatar) {
         embed.addFields({ name: "Avatar Update", value: "See Below" }).setImage(newUser.displayAvatarURL({ extension: "png" }));
       } else {
         embed.setThumbnail(newUser.displayAvatarURL());
       }
+
+      // Add activity and send
       if ((embed.data.fields?.length || 0) > 0) {
         embed.addFields({ name: "Activity", value: `${user?.posts ?? 0} active minutes in ${u.moment(newMember?.joinedTimestamp).fromNow(true)}` });
-        ldsg?.client.getTextChannel(u.sf.channels.mods.userUpdates)?.send({ content: `${newUser} (${newUser.displayName})`, embeds: [embed], components: [
-          u.MessageActionRow().addComponents(new u.Button().setCustomId("timeModInfo").setEmoji("👤").setLabel("User Info").setStyle(Discord.ButtonStyle.Secondary))
-        ] });
+
+        oldUser.client.getTextChannel(u.sf.channels.mods.userUpdates)?.send({ content: `${newUser} (${newUser.displayName})`, embeds: [embed], components: [infoButton] });
       }
     }
-  } catch (error) { u.errorHandler(error, `User Update Error: ${u.escapeText(newUser?.displayName)} (${newUser.id})`); }
+  } catch (error) {
+    u.errorHandler(error, `User Update Error: ${u.escapeText(newUser?.displayName)} (${newUser.id})`);
+  }
 }
 
 const Module = new Augur.Module()
 .addEvent("channelCreate", (channel) => {
   try {
-    if (channel.guild?.id === u.sf.ldsg) {
-      if (channel.permissionsFor(channel.client.user)?.has(["ViewChannel", "ManageChannels"])) {
-        // muted role
-        channel.permissionOverwrites.create(u.sf.roles.moderation.muted, mutedPerms, { reason: "New channel permissions update" })
-        .catch(/** @param {Error} e */e => u.errorHandler(e, `Update New Channel Permissions: ${channel.name}`));
-        // duct tape role
-        channel.permissionOverwrites.create(u.sf.roles.moderation.ductTape, mutedPerms, { reason: "New channel permissions update" })
-          .catch(/** @param {Error} e */e => u.errorHandler(e, `Update New Channel Permissions: ${channel.name}`));
-      } else {
-        channel.client.getTextChannel(u.sf.channels.team.logistics)?.send({ embeds: [
-          u.embed({
-            title: "Update New Channel Permissions",
-            description: `Insufficient permissions to update channel ${channel} (#${channel.name}). Muted permissions need to be applied manually. Default denied permissions for Muted and Duct Tape are:\n\`\`\`${Object.keys(mutedPerms).join('\n')}\`\`\``,
-            color: c.colors.info
-          })
-        ] });
+    if (channel.guildId !== u.sf.ldsg) return;
+
+    // If icarus has permission to make changes
+    if (channel.permissionsFor(channel.client.user)?.has(["ViewChannel", "ManageChannels"])) {
+      const reason = `Update New Channel Permissions: ${channel.name}`;
+
+      // Add default permissions
+      channel.permissionOverwrites.create(u.sf.roles.moderation.muted, mutedPerms, { reason });
+      if (channel.isVoiceBased()) {
+        channel.permissionOverwrites.create(u.sf.roles.moderation.suspended, { Connect: false }, { reason });
       }
+    } else {
+      // send warning message
+      const embed = u.embed({
+        title: "Update New Channel Permissions",
+        description: `Insufficient permissions to update channel ${channel} (#${channel.name}). Muted permissions need to be applied manually. Default denied permissions for Muted are:\n\`\`\`${Object.keys(mutedPerms).join('\n')}\`\`\``,
+        color: c.colors.info
+      });
+
+      channel.client.getTextChannel(u.sf.channels.team.logistics)?.send({ embeds: [embed] });
     }
   } catch (error) {
-    u.errorHandler(error, "Set permissions on channel create");
+    u.errorHandler(error, `Set permissions on channel create (${channel.name})`);
   }
 })
 .addEvent("guildBanAdd", (guildBan) => {
   const guild = guildBan.guild;
   const user = guildBan.user;
   if (guild.id === u.sf.ldsg) {
-    guild.client.getTextChannel(u.sf.channels.mods.logs)?.send({
-      embeds: [
-        u.embed({
-          author: user,
-          title: `${user.username} has been banned`,
-          color: c.colors.info,
-          description: user.toString(),
-          footer: { text: user.id }
-        })
-      ],
-      components: [
-        u.MessageActionRow().addComponents(new u.Button().setCustomId("timeModInfo").setEmoji("👤").setLabel("User Info").setStyle(Discord.ButtonStyle.Secondary))
-      ]
-    });
+    const embed = u.embed({ author: user })
+      .setTitle(`${user.username} has been banned`)
+      .setColor(c.colors.info)
+      .setDescription(user.toString())
+      .setFooter({ text: user.id });
+
+    guild.client.getTextChannel(u.sf.channels.mods.logs)?.send({ embeds: [embed], components: [infoButton] });
   }
 })
 .addEvent("guildMemberAdd", async (member) => {
@@ -163,8 +165,7 @@ const Module = new Augur.Module()
           const role = guild.roles.cache.get(roleId);
           if (!role) continue;
 
-          // can't be applied
-          if (role.managed || role.position >= (guild.members.me?.roles.highest.position ?? 0)) {
+          if (role.managed || role.position >= (guild.members.me?.roles.highest.position ?? 0)) { // can't be applied
             failed.push(role);
           } else if (dangerRoles.includes(roleId)) { // dangerous!
             danger.push(role);
@@ -186,6 +187,7 @@ const Module = new Augur.Module()
         const addSurplus = toAdd.length - 30;
         const failedSurplus = failed.length - 30;
         const dangerSurplus = danger.length - 30;
+
         let roleString = toAdd.sort((a, b) => b.comparePositionTo(a)).map(role => role.toString()).slice(0, 30).join(", ");
         if (addSurplus > 0) roleString += ` + ${addSurplus} more`;
         embed.addFields({ name: "Roles Given", value: roleString || "None" });
@@ -222,18 +224,19 @@ const Module = new Augur.Module()
           "How'd you find us?",
           "What platforms/games do you play?"
         ]);
+
         welcomeString = `${welcome}, ${member}! ${info1} ${welcomeChannel} ${info2}. ${info3}\n\nTry \`!profile\` over in <#${u.sf.channels.botSpam}> if you'd like to opt in to roles or share IGNs.`;
         embed.setTitle(member.displayName + " has joined the server.");
 
         u.db.user.newUser(member.id);
       }
-      modLogs?.send({ embeds: [embed], components: [
-        u.MessageActionRow().addComponents(new u.Button().setCustomId("timeModInfo").setEmoji("👤").setLabel("User Info").setStyle(Discord.ButtonStyle.Secondary))
-      ] });
 
+      modLogs?.send({ embeds: [embed], components: [infoButton] });
+
+      // pizza party alerts
       const { enabled, count } = config.memberMilestone;
       if (enabled && (guild.memberCount < count)) welcomeString += `\n*${count - guild.memberCount} more members until we have a pizza party!*`;
-      if (!member.roles.cache.has(u.sf.roles.moderation.muted) && !member.user.bot && !banned.includes(member.id)) await general?.send({ content: welcomeString, allowedMentions: { parse: ['users'] } });
+      if (!member.roles.cache.has(u.sf.roles.moderation.muted) && !member.user.bot && !c.getBanList().features.welcome.includes(member.id)) await general?.send({ content: welcomeString, allowedMentions: { parse: ['users'] } });
       if (guild.memberCount === count) {
         await general?.send(`:tada: :confetti_ball: We're now at ${count} members! :confetti_ball: :tada:`);
         await modLogs?.send({ content: `:tada: :confetti_ball: We're now at ${count} members! :confetti_ball: :tada:\n*pinging for effect: <@${u.sf.other.ghost}> <@${config.ownerId}> <@&${u.sf.roles.team.management}*`, allowedMentions: { parse: ['roles', 'users'] } });
@@ -243,49 +246,43 @@ const Module = new Augur.Module()
 })
 .addEvent("guildMemberRemove", async (member) => {
   try {
-    if (member.guild.id === u.sf.ldsg) {
-      if (member.partial) member = await member.fetch().catch(() => member);
-      if (member.partial) return; // failed to fetch
-      await u.db.user.updateTenure(member);
-      await u.db.user.updateRoles(member);
-      const user = await u.db.user.fetchUser(member.id);
-      const embed = u.embed({
-        author: member,
-        title: `${member.displayName} has left the server`,
-        color: c.colors.info,
-        footer: { text: member.id }
-      })
+    if (member.guild.id !== u.sf.ldsg) return;
+
+    if (member.partial) member = await member.fetch().catch(() => member);
+    if (member.partial) return; // failed to fetch
+
+    await u.db.user.updateTenure(member);
+    await u.db.user.updateRoles(member);
+
+    // no need for two alerts if they were banned
+    if (member.guild.bans.cache.has(member.id)) return;
+
+    // send alert to modlogs
+    const user = await u.db.user.fetchUser(member.id);
+    const embed = u.embed({ author: member })
+      .setTitle(`${member.displayName} has left the server`)
+      .setColor(c.colors.info)
+      .setFooter({ text: member.id })
       .addFields(
         { name: "User", value: member.toString() },
         { name: "Joined", value: u.moment(member.joinedAt).fromNow(), inline: true },
         { name: "Activity", value: (user?.posts || 0) + " Active Minutes", inline: true }
       );
-      member.guild.client.getTextChannel(u.sf.channels.mods.logs)?.send({ embeds: [embed], components: [
-        u.MessageActionRow().addComponents(new u.Button().setCustomId("timeModInfo").setEmoji("👤").setLabel("User Info").setStyle(Discord.ButtonStyle.Secondary))
-      ] });
-    }
+
+    member.guild.client.getTextChannel(u.sf.channels.mods.logs)?.send({ embeds: [embed], components: [infoButton] });
+
   } catch (error) { u.errorHandler(error, `Member Leave: ${u.escapeText(member.displayName)} (${member.id})`); }
 })
-.addEvent("guildMemberUpdate", update)
-.addEvent("userUpdate", update)
-.addEvent("messageCreate", async (msg) => {
-  if (!msg.author.bot && msg.guild?.id === u.sf.ldsg) {
-    // sponsor pings
-    for (const [sponsor, info] of u.db.sheets.sponsors) {
-      if (info.enabled && info.emojiId && msg.mentions.members?.has(sponsor)) await msg.react(info.emojiId).catch(u.noop);
-    }
-    // trigger words
-    for (const [word, emoji] of emojis) {
-      if (Math.random() < 0.3 && msg.content.toLowerCase().includes(word)) await msg.react(emoji).catch(u.noop);
-    }
-  }
-})
+.addEvent("guildMemberUpdate", userUpdate)
+.addEvent("userUpdate", userUpdate)
 .setClockwork(() => {
   return setInterval(() => {
+    // Boost alerts
     const ldsg = Module.client.guilds.cache.get(u.sf.ldsg);
     if (!ldsg?.premiumSubscriptionCount) return;
-    if (ldsg.premiumSubscriptionCount < tier3) {
-      if (!lowBoosts) Module.client.getTextChannel(u.sf.channels.team.team)?.send(`# ⚠️ We've dropped to ${ldsg.premiumSubscriptionCount} boosts!\n${tier3} boosts are required for Tier 3.`);
+
+    if (ldsg.premiumSubscriptionCount < TIER_3_MIN) {
+      if (!lowBoosts) Module.client.getTextChannel(u.sf.channels.team.team)?.send(`# ⚠️ We've dropped to ${ldsg.premiumSubscriptionCount} boosts!\n${TIER_3_MIN} boosts are required for Tier 3.`);
       lowBoosts = true;
     } else {
       lowBoosts = false;

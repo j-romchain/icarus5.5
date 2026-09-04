@@ -3,7 +3,6 @@ const Augur = require("augurbot-ts"),
   Discord = require("discord.js"),
   u = require("../utils/utils"),
   config = require('../config/config.json'),
-  profanityFilter = require("profanity-matcher"),
   c = require("../utils/modCommon"),
   Module = new Augur.Module();
 
@@ -11,6 +10,36 @@ const noTarget = "The user you provided was invalid. They may have left the serv
 
 /** @type {Map<string, { limit: number, timeout: NodeJS.Timeout }>} */
 const molasses = new Map();
+
+/**
+ * @param {Discord.GuildMember} member
+ * @param {string} webhookURL
+ * @param {string} decorator
+ * @param {string} [content]
+ * @param {Discord.Message} [msg]
+*/
+function sendMsgCopy(member, webhookURL, decorator, content, msg) {
+
+  if (!content && msg) {
+    content = `${msg.url} ${msg.editedAt ? "[EDITED]" : ""}\n> ${msg.content}`;
+  }
+
+  /** @type {Discord.WebhookMessageCreateOptions} */
+  const payload = {
+    username: `${decorator} - ${member.displayName}`.substring(0, 31),
+    avatarURL: member.displayAvatarURL(),
+    allowedMentions: { parse: [] },
+    content,
+    files: msg ? msg.attachments.map(attachment => attachment.url).concat(msg.stickers.map(s => s.url)) : undefined
+  };
+
+  const webhook = new Discord.WebhookClient({ url: webhookURL });
+
+  webhook.send(payload).catch(e => {
+    u.errorHandler(e, msg);
+  });
+
+}
 
 /**
  * @param {Discord.Message} [msg]
@@ -25,25 +54,34 @@ async function watch(msg, oldState, newState) {
   if (member.user.bot || (member.roles.cache.has(u.sf.roles.moderation.trusted) && !c.watchlist.has(member.id))) return; // filter not in the watchlist
 
   const decorator = !member.roles.cache.has(u.sf.roles.moderation.trusted) ? "🚪" : "👀";
-  /** @type {Discord.WebhookMessageCreateOptions} */
-  const payload = {
-    username: `${decorator} - ${member.displayName}`.substring(0, 31),
-    avatarURL: member.displayAvatarURL(),
-    allowedMentions: { parse: [] }
-  };
-  if (msg) {
-    payload.files = msg.attachments.map(attachment => attachment.url).concat(msg.stickers.map(s => s.url));
-    payload.content = `${msg.url} ${msg.editedAt ? "[EDITED]" : ""}\n> ${msg.content}`;
-  } else if (oldState?.channelId !== newState?.channelId) {
-    if (newState?.channel) payload.content = `🎙️ Joined ${newState.channel.name}`;
-    else if (oldState?.channel) payload.content = `🔇 Left ${oldState.channel.name}`;
-    else return;
-  } else {
-    return;
-  }
-  const webhook = new Discord.WebhookClient({ url: config.webhooks.watchlist });
 
-  webhook.send(payload);
+  let content = "";
+
+  if (!msg) {
+    if (oldState?.channelId === newState?.channelId) return;
+    if (newState?.channel) content = `🎙️ Joined ${newState.channel.name}`;
+    else if (oldState?.channel) content = `🔇 Left ${oldState.channel.name}`;
+    else return;
+  }
+
+  sendMsgCopy(member, config.webhooks.watchlist, decorator, content, msg);
+}
+
+/** @param {Discord.Message<true>} msg */
+async function mutedHistory(msg) {
+  if (!msg.member || ![u.sf.channels.mods.muted, u.sf.channels.mods.office].includes(msg.channelId)) return;
+
+  const isOffice = msg.channelId === u.sf.channels.mods.office;
+  const webhook = isOffice ? config.webhooks.officeHistory : config.webhooks.mutedHistory;
+
+  let decorator = "🛡️";
+  if (msg.member.roles.cache.hasAny(u.sf.roles.moderation.muted, u.sf.roles.moderation.ductTape)) {
+    if (isOffice) decorator = "🪑";
+    else decorator = "🔇";
+  }
+
+  const content = `${msg.editedAt ? "[EDITED]" : ""} ${msg.content}`;
+  sendMsgCopy(msg.member, webhook, decorator, content, msg);
 }
 
 /** @param {Augur.GuildInteraction<"CommandSlash">} interaction */
@@ -65,13 +103,16 @@ async function slashModBan(interaction) {
   const days = interaction.options.getInteger("clean") ?? 1;
   if (!target) return interaction.editReply(noTarget);
 
-  const ban = await c.ban(interaction, target, reason, days);
-  return interaction.editReply(ban);
+  const banResponse = await c.ban(interaction, target, reason, days);
+  if (banResponse) return banResponse.interaction.editReply(banResponse.payload);
 }
 
 /** @param {Augur.GuildInteraction<"CommandSlash">} interaction*/
 async function slashModFilter(interaction) {
-  const pf = new profanityFilter();
+  /** @type {import("profanity-matcher") | undefined} */
+  const pf = interaction.client.moduleManager.shared.get("01-filter.js")?.();
+  if (!pf) throw new Error("Couldn't access profanity filter");
+
   await interaction.deferReply({ flags: ["Ephemeral"] });
 
   const word = interaction.options.getString("word", true).toLowerCase().trim();
@@ -124,8 +165,8 @@ async function slashModKick(interaction) {
   const reason = interaction.options.getString("reason", true);
   if (!target) return interaction.editReply(noTarget);
 
-  const kick = await c.kick(interaction, target, reason);
-  return interaction.editReply(kick);
+  const kickResponse = await c.kick(interaction, target, reason);
+  if (kickResponse) kickResponse.interaction.editReply(kickResponse.payload);
 }
 
 /** @param {Augur.GuildInteraction<"CommandSlash">} interaction*/
@@ -305,6 +346,33 @@ async function slashModTrust(interaction) {
 }
 
 /** @param {Augur.GuildInteraction<"CommandSlash">} interaction*/
+async function slashModTrustAudit(interaction) {
+  try {
+    await interaction.deferReply({ flags: u.ephemeralChannel(interaction, u.sf.channels.mods.discussion) });
+    const threshold = interaction.options.getInteger("posts", false) ?? 100;
+
+    const members = interaction.guild.members.cache;
+    const pool = members.filter(member => ((Date.now() - (member.joinedTimestamp || 0)) > (7 * 24 * 60 * 60_000)) && !member.roles.cache.has(u.sf.roles.moderation.trusted));
+    const users = await u.db.user.getUsers({ posts: { $gt: threshold }, discordId: { $in: pool.map(m => m.id) } });
+
+    const response = users.sort((a, b) => b.posts - a.posts)
+      .map(m => {
+        const member = members.get(m.discordId);
+        return `${member || `<@${m.discordId}>`}: ${m.posts} posts, joined ${member?.joinedAt?.toDateString() || "at an unkown date" } `;
+      });
+
+    if (response.length === 0) return interaction.editReply(`No untrusted users who have been in the server longer than a week with ${threshold}+ posts found.`);
+
+    const embed = u.embed().setTitle("Trust Audit").setDescription("All of the people that have talked without the trusted role");
+    const processedEmbeds = u.pagedEmbedsDescription(embed, response);
+
+    return u.manyReplies(interaction, processedEmbeds.map(a => ({ embeds: [a] })));
+  } catch (e) {
+    u.errorHandler(e, interaction);
+  }
+}
+
+/** @param {Augur.GuildInteraction<"CommandSlash">} interaction*/
 async function slashModTimeout(interaction) {
   await interaction.deferReply({ flags: ["Ephemeral"] });
   const member = interaction.options.getMember("user");
@@ -349,6 +417,25 @@ async function slashModGrownups(interaction) {
   }
 }
 
+/** @param {Discord.ButtonInteraction<"cached">} interaction */
+async function buttonModUnmutePurge(interaction) {
+  if (!interaction.channel) throw new Error("Unable to access channel");
+
+  if (![u.sf.channels.mods.office, u.sf.channels.mods.muted].includes(interaction.channel?.id ?? "")) {
+    u.errorHandler(new Error("Unmute purge button attempted outside of mute channel"), interaction);
+    return interaction.reply({ content: "You can't use that in this channel!", flags: ["Ephemeral"] });
+  }
+
+  await interaction.deferReply({ flags: ["Ephemeral"] });
+
+  let messages = await interaction.channel.bulkDelete(100, false);
+  while (messages.size === 100) {
+    messages = await interaction.channel.bulkDelete(100, false);
+  }
+
+  await interaction.editReply("Channel was cleaned up!");
+}
+
 
 Module.addEvent("guildMemberAdd", async (member) => {
   if (member.guild.id === u.sf.ldsg) {
@@ -368,9 +455,15 @@ Module.addEvent("guildMemberAdd", async (member) => {
   const list = await u.db.user.getUsers({ watching: true });
   c.watchlist = new Set(list.map(l => l.discordId));
 })
-.addEvent("messageCreate", watch)
+.addEvent("messageCreate", (msg) => {
+  if (!msg.inGuild()) return;
+  watch(msg);
+  mutedHistory(msg);
+})
 .addEvent("messageEdit", async (msg, newMsg) => {
+  if (!newMsg.inGuild()) return;
   watch(newMsg);
+  mutedHistory(newMsg);
 })
 .addEvent("voiceStateUpdate", (oldS, newS) => {
   watch(undefined, oldS, newS);
@@ -402,11 +495,20 @@ Module.addEvent("guildMemberAdd", async (member) => {
         case "warn": return slashModWarn(interaction);
         case "watch": return slashModWatch(interaction);
         case "grownups": return slashModGrownups(interaction);
+        case "trustaudit": return slashModTrustAudit(interaction);
         default:
           u.errorHandler(Error("Unknown Interaction Subcommand"), interaction);
       }
     } catch (error) { u.errorHandler(error, interaction); }
   }
+})
+.addInteraction({
+  name: "modUnmutePurge",
+  id: "modUnmutePurge",
+  type: "Button",
+  onlyGuild: true,
+  permissions: (int) => u.perms.calc(int.member, ["mod"]),
+  process: buttonModUnmutePurge,
 });
 
 module.exports = Module;

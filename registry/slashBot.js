@@ -14,7 +14,13 @@ const update = new u.sub()
 const gotobed = new u.sub()
   .setName("gotobed")
   .setDescription("[ADMIN] Stops the bot. (It'll probably get restarted by something)")
-  .addBooleanOption(startagain);
+  .addBooleanOption(startagain)
+  .addBooleanOption(
+    new u.bool()
+      .setName("keep-stream-cache")
+      .setDescription("Keeps track of the people currently streaming. (Default: True)")
+      .setRequired(false)
+  );
 
 const ping = new u.sub()
   .setName("ping")
@@ -77,7 +83,7 @@ const getid = new u.sub()
 
 const register = new u.sub()
   .setName("register")
-  .setDescription("Register slash commands");
+  .setDescription("[ADMIN] Register slash commands");
 
 const status = new u.sub()
   .setName("status")
@@ -113,6 +119,11 @@ const status = new u.sub()
       .setDescription("The URL for the activity")
       .setRequired(false)
   );
+
+const error = new u.sub()
+  .setName("error")
+  .setDescription("Throws an error");
+
 module.exports = new u.cmd()
   .setName("bot")
   .setDescription("Control the bot! Some actions are limited based on role.")
@@ -127,6 +138,7 @@ module.exports = new u.cmd()
   .addSubcommand(register)
   .addSubcommand(status)
   .addSubcommand(sheets)
+  .addSubcommand(error)
   .setContexts(u.contexts.Guild)
-  .setDefaultMemberPermissions(u.devMode)
+  .setDefaultMemberPermissions(u.privateCommand)
   .toJSON();

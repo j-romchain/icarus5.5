@@ -9,13 +9,15 @@ test.js
 *-.json
 *.csv
 data/banned.json
+data/extralifeCache.json
+data/streamcache.json
 site
 .DS_Store
 media/badges/*
 media/banners/*
 !media/banners/README.md
 media/tags/*
-naughty.csv
+data/naughty.txt
 
 # For Visual Studio's temp directory
 .vs/
